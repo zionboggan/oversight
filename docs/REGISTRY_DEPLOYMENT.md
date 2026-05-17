@@ -98,3 +98,31 @@ python tests/test_registry_conformance.py
 
 The token is read from the environment and sent as a bearer header. Do not put
 real token values in shell history on shared machines.
+
+## Migrating Python Registry Data To Rust
+
+The Rust Axum registry can import the Python reference registry's SQLite rows
+without mutating the source database. Run a dry run first:
+
+```bash
+oversight-registry \
+  --db /var/lib/oversight/rust-registry.sqlite \
+  --migrate-from /var/lib/oversight/python-registry.sqlite \
+  --migrate-dry-run
+```
+
+The command prints JSON row counts for `manifests`, `beacons`, `watermarks`,
+`events`, and `corpus`. If the counts are expected, run the same command
+without `--migrate-dry-run`:
+
+```bash
+oversight-registry \
+  --db /var/lib/oversight/rust-registry.sqlite \
+  --migrate-from /var/lib/oversight/python-registry.sqlite
+```
+
+The migration copies into the Rust target database after running its schema
+migrations. It preserves `events.id`, `events.tlog_index`, corpus `metadata`,
+and the manifest/beacon/watermark relationships that evidence bundles depend
+on. Keep the Python database as a rollback artifact until live conformance and
+evidence-bundle checks pass against the Rust service.

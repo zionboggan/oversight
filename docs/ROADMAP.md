@@ -234,9 +234,11 @@ server passes the existing 33-check `tests/test_registry_conformance.py`
 harness in live-URL mode against the registry v1 surface with
 `OVERSIGHT_OPERATOR_TOKEN` enabled. The Rust registry now matches the Python
 reference for write-side operator-token auth and DNS bridge bearer/header
-auth. Remaining work: migration tooling from the Python registry,
-longer-running deployment tests, and a wire-format stability declaration
-before declaring v1.0 ready.
+auth. As of 2026-05-17, `oversight-registry --migrate-from` can copy the
+Python registry's manifests, beacons, watermarks, events, and corpus rows
+into the Rust SQLite schema, with `--migrate-dry-run` for count-only
+preflight. Remaining work: longer-running deployment tests and a wire-format
+stability declaration before declaring v1.0 ready.
 
 ---
 

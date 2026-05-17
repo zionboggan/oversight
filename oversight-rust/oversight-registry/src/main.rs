@@ -59,6 +59,14 @@ struct Args {
     /// Data directory for tlog and identity key (overridden by OVERSIGHT_DATA env)
     #[arg(long)]
     data_dir: Option<String>,
+
+    /// Copy rows from a Python registry SQLite database into --db and exit
+    #[arg(long)]
+    migrate_from: Option<String>,
+
+    /// Report migration row counts without writing to --db
+    #[arg(long)]
+    migrate_dry_run: bool,
 }
 
 // ---- Application state --------------------------------------------------
@@ -158,6 +166,13 @@ fn client_key(headers: &HeaderMap, addr: Option<&SocketAddr>, trusted_proxy: boo
     }
     addr.map(|a| a.ip().to_string())
         .unwrap_or_else(|| "unknown".into())
+}
+
+fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
 }
 
 /// Load or create the registry Ed25519 identity keypair.
@@ -378,6 +393,20 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(path = %db_path.display(), "opening database");
     let pool = db::create_pool(&db_path).await?;
     db::run_migrations(&pool).await?;
+
+    if let Some(source) = args.migrate_from.as_deref() {
+        let source_path = PathBuf::from(source);
+        if same_file_path(&source_path, &db_path) {
+            return Err(anyhow::anyhow!(
+                "--migrate-from must point at a different SQLite file than --db"
+            ));
+        }
+        let report = db::migrate_from_sqlite(&pool, &source_path, args.migrate_dry_run)
+            .await
+            .map_err(|e| anyhow::anyhow!("registry migration failed: {e}"))?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
 
     // Initialize transparency log.
     let tlog_dir = data_dir.join("tlog");

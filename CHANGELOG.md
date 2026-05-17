@@ -19,6 +19,11 @@
   `POST /attribute` with the same bearer/header contract as the Python
   registry. Its DNS event route also accepts either `Authorization: Bearer`
   or `X-Oversight-DNS-Secret`, matching the live deployment guide.
+- **Rust registry migration tooling.** `oversight-registry` now supports
+  `--migrate-from <python-registry.sqlite>` plus `--migrate-dry-run`. It
+  copies the Python reference registry's manifests, beacons, watermarks,
+  events, and corpus rows into the Rust SQLite schema while preserving event
+  IDs, corpus metadata, and registry evidence relationships.
 - **Deployment docs.** Added `docs/REGISTRY_DEPLOYMENT.md` covering the live
   Compose/Caddy flow, route map, token headers, DNS bridge secret, and local
   versus live conformance commands.

@@ -68,6 +68,18 @@ callbacks. The Python FastAPI registry and Rust Axum registry both honor
 the same bearer/header token contract. Full route map and validation commands are in
 [`docs/REGISTRY_DEPLOYMENT.md`](docs/REGISTRY_DEPLOYMENT.md).
 
+Operators moving from the Python registry to the Rust Axum registry can run a
+dry-run copy first:
+
+```bash
+oversight-registry --db rust-registry.sqlite \
+  --migrate-from python-registry.sqlite \
+  --migrate-dry-run
+```
+
+Remove `--migrate-dry-run` to copy manifests, beacons, watermarks, events, and
+corpus rows into the Rust database.
+
 ## Quick start
 
 ```bash
