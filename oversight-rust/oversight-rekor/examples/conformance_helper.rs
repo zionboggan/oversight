@@ -27,11 +27,17 @@ fn main() {
     }
     match args[1].as_str() {
         "pae" => {
-            let payload_type = args.get(2).cloned().unwrap_or_else(|| DSSE_PAYLOAD_TYPE.into());
+            let payload_type = args
+                .get(2)
+                .cloned()
+                .unwrap_or_else(|| DSSE_PAYLOAD_TYPE.into());
             let payload = read_stdin();
             let out = pae(&payload_type, &payload);
             let stdout = io::stdout();
-            stdout.lock().write_all(hex::encode(out).as_bytes()).unwrap();
+            stdout
+                .lock()
+                .write_all(hex::encode(out).as_bytes())
+                .unwrap();
         }
         "verify" => {
             let pub_hex = args.get(2).expect("pub hex required");
@@ -50,8 +56,7 @@ fn main() {
             let priv_hex = args.get(2).expect("priv hex required");
             let priv_bytes = hex::decode(priv_hex).expect("valid hex priv");
             let raw = read_stdin();
-            let stmt: serde_json::Value =
-                serde_json::from_slice(&raw).expect("parse statement");
+            let stmt: serde_json::Value = serde_json::from_slice(&raw).expect("parse statement");
             let env = sign_dsse(&stmt, &priv_bytes, "").expect("sign");
             let canon = env.to_canonical_json().expect("canonicalize");
             print!("{}", canon);
@@ -59,15 +64,13 @@ fn main() {
         "payload_b64" => {
             // Read envelope from stdin, print the base64 payload.
             let raw = read_stdin();
-            let env: DsseEnvelope =
-                serde_json::from_slice(&raw).expect("parse envelope");
+            let env: DsseEnvelope = serde_json::from_slice(&raw).expect("parse envelope");
             print!("{}", env.payload_b64);
         }
         "decode_payload" => {
             // Read envelope from stdin, print decoded payload (the canonical statement bytes).
             let raw = read_stdin();
-            let env: DsseEnvelope =
-                serde_json::from_slice(&raw).expect("parse envelope");
+            let env: DsseEnvelope = serde_json::from_slice(&raw).expect("parse envelope");
             let bytes = B64.decode(env.payload_b64.as_bytes()).expect("b64");
             io::stdout().lock().write_all(&bytes).unwrap();
         }

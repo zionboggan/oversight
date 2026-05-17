@@ -59,20 +59,20 @@ for new contributors. Git plus tag is the supported pin.
 
 ```toml
 [dependencies]
-oversight-crypto    = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
-oversight-manifest  = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
-oversight-container = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
-oversight-tlog      = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
-oversight-rekor     = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
-oversight-watermark = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
-oversight-policy    = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.8" }
+oversight-crypto    = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
+oversight-manifest  = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
+oversight-container = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
+oversight-tlog      = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
+oversight-rekor     = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
+oversight-watermark = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
+oversight-policy    = { git = "https://github.com/oversight-protocol/oversight.git", tag = "v0.4.11" }
 ```
 
 Cargo resolves all seven entries against the same git checkout, so the
 fetch happens once and every crate is byte-identical to what the desktop
 CLI shipped against. `Cargo.lock` records the resolved commit
-(`af6f725c` for `v0.4.8`); a downstream consumer who commits their lock
-file will get reproducible resolution across machines.
+(`14547d9` for `v0.4.11`); a downstream consumer who commits their lock file
+will get reproducible resolution across machines.
 
 For a consumer that prefers a commit-sha pin over a tag pin, the same
 pattern works with `rev` instead of `tag`. Tag is the recommended default

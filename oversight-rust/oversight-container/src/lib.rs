@@ -104,7 +104,12 @@ pub struct SealedFile {
     pub suite_id: u8,
 }
 
-fn read_exact<'a>(buf: &'a [u8], at: &mut usize, n: usize, field: &'static str) -> Result<&'a [u8], ContainerError> {
+fn read_exact<'a>(
+    buf: &'a [u8],
+    at: &mut usize,
+    n: usize,
+    field: &'static str,
+) -> Result<&'a [u8], ContainerError> {
     if buf.len() < *at + n {
         return Err(ContainerError::Truncated {
             wanted: n,
@@ -148,7 +153,9 @@ impl SealedFile {
         let mut at = 0usize;
         let magic = read_exact(data, &mut at, 6, "magic")?;
         if magic != MAGIC {
-            return Err(ContainerError::BadMagic { got: magic.to_vec() });
+            return Err(ContainerError::BadMagic {
+                got: magic.to_vec(),
+            });
         }
         let hdr = read_exact(data, &mut at, 2, "version/suite")?;
         let fmt_ver = hdr[0];
@@ -244,10 +251,14 @@ pub fn seal(
         ));
     }
     if recipient_x25519_pub.len() != 32 {
-        return Err(ContainerError::Precondition("recipient pubkey must be 32 bytes"));
+        return Err(ContainerError::Precondition(
+            "recipient pubkey must be 32 bytes",
+        ));
     }
     if issuer_ed25519_priv.len() != 32 {
-        return Err(ContainerError::Precondition("issuer priv key must be 32 bytes"));
+        return Err(ContainerError::Precondition(
+            "issuer priv key must be 32 bytes",
+        ));
     }
 
     manifest.sign(issuer_ed25519_priv)?;
@@ -275,7 +286,9 @@ pub fn open_sealed(
     policy_ctx: Option<&PolicyContext>,
 ) -> Result<(Vec<u8>, Manifest), ContainerError> {
     if recipient_x25519_priv.len() != 32 {
-        return Err(ContainerError::Precondition("recipient priv key must be 32 bytes"));
+        return Err(ContainerError::Precondition(
+            "recipient priv key must be 32 bytes",
+        ));
     }
 
     let sf = SealedFile::from_bytes(blob)?;
@@ -299,9 +312,16 @@ pub fn open_sealed(
             return Err(ContainerError::Precondition("file expired (not_after)"));
         }
     }
-    if let Some(nb) = sf.manifest.policy.get("not_before").and_then(|v| v.as_i64()) {
+    if let Some(nb) = sf
+        .manifest
+        .policy
+        .get("not_before")
+        .and_then(|v| v.as_i64())
+    {
         if now < nb {
-            return Err(ContainerError::Precondition("file not yet released (not_before)"));
+            return Err(ContainerError::Precondition(
+                "file not yet released (not_before)",
+            ));
         }
     }
 
@@ -384,7 +404,9 @@ pub fn seal_hw_p256(
         ));
     }
     if issuer_ed25519_priv.len() != 32 {
-        return Err(ContainerError::Precondition("issuer priv key must be 32 bytes"));
+        return Err(ContainerError::Precondition(
+            "issuer priv key must be 32 bytes",
+        ));
     }
 
     manifest.sign(issuer_ed25519_priv)?;
@@ -443,9 +465,16 @@ pub fn open_sealed_with_provider(
             return Err(ContainerError::Precondition("file expired (not_after)"));
         }
     }
-    if let Some(nb) = sf.manifest.policy.get("not_before").and_then(|v| v.as_i64()) {
+    if let Some(nb) = sf
+        .manifest
+        .policy
+        .get("not_before")
+        .and_then(|v| v.as_i64())
+    {
         if now < nb {
-            return Err(ContainerError::Precondition("file not yet released (not_before)"));
+            return Err(ContainerError::Precondition(
+                "file not yet released (not_before)",
+            ));
         }
     }
 
@@ -493,7 +522,12 @@ pub fn seal_multi(
     issuer_ed25519_priv: &[u8],
     recipient_x25519_pubs: &[&[u8]],
 ) -> Result<Vec<u8>, ContainerError> {
-    let _ = (plaintext, manifest, issuer_ed25519_priv, recipient_x25519_pubs);
+    let _ = (
+        plaintext,
+        manifest,
+        issuer_ed25519_priv,
+        recipient_x25519_pubs,
+    );
     Err(ContainerError::Precondition(
         "seal_multi disabled until manifests can bind all recipients",
     ))
@@ -502,10 +536,16 @@ pub fn seal_multi(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oversight_crypto::{ClassicIdentity, FileKeyProvider, SoftwareP256Identity, SoftwareP256KeyProvider};
+    use oversight_crypto::{
+        ClassicIdentity, FileKeyProvider, SoftwareP256Identity, SoftwareP256KeyProvider,
+    };
     use oversight_manifest::Recipient;
 
-    fn make_manifest(issuer: &ClassicIdentity, recipient: &ClassicIdentity, plaintext: &[u8]) -> Manifest {
+    fn make_manifest(
+        issuer: &ClassicIdentity,
+        recipient: &ClassicIdentity,
+        plaintext: &[u8],
+    ) -> Manifest {
         Manifest::new(
             "doc.txt",
             crypto::content_hash(plaintext),
@@ -559,8 +599,15 @@ mod tests {
         let recipient = ClassicIdentity::generate();
         let plaintext = b"This is my secret document.";
         let mut m = make_manifest(&issuer, &recipient, plaintext);
-        let blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &recipient.x25519_pub).unwrap();
-        let (pt, manifest) = open_sealed(&blob, recipient.x25519_priv.as_ref(), None, None).unwrap();
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &recipient.x25519_pub,
+        )
+        .unwrap();
+        let (pt, manifest) =
+            open_sealed(&blob, recipient.x25519_priv.as_ref(), None, None).unwrap();
         assert_eq!(pt, plaintext);
         assert_eq!(manifest.file_id, m.file_id);
     }
@@ -572,7 +619,13 @@ mod tests {
         let bob = ClassicIdentity::generate();
         let plaintext = b"secret";
         let mut m = make_manifest(&issuer, &alice, plaintext);
-        let blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice.x25519_pub).unwrap();
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
         // Bob tries to open — should fail at AEAD stage
         assert!(open_sealed(&blob, bob.x25519_priv.as_ref(), None, None).is_err());
     }
@@ -583,7 +636,13 @@ mod tests {
         let alice = ClassicIdentity::generate();
         let plaintext = b"secret";
         let mut m = make_manifest(&issuer, &alice, plaintext);
-        let mut blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice.x25519_pub).unwrap();
+        let mut blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
         let len = blob.len();
         blob[len - 1] ^= 0x01;
         assert!(open_sealed(&blob, alice.x25519_priv.as_ref(), None, None).is_err());
@@ -606,7 +665,9 @@ mod tests {
         blob.extend_from_slice(&(5u32 * 1024 * 1024).to_be_bytes());
         blob.resize(100, 0);
         match SealedFile::from_bytes(&blob) {
-            Err(ContainerError::Oversized { field: "manifest", .. }) => (),
+            Err(ContainerError::Oversized {
+                field: "manifest", ..
+            }) => (),
             other => panic!("expected Oversized manifest error, got {:?}", other),
         }
     }
@@ -628,7 +689,13 @@ mod tests {
         let recipient = ClassicIdentity::generate();
         let plaintext = b"classic via provider path";
         let mut m = make_manifest(&issuer, &recipient, plaintext);
-        let blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &recipient.x25519_pub).unwrap();
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &recipient.x25519_pub,
+        )
+        .unwrap();
 
         let provider = FileKeyProvider::new(recipient);
         let (pt, manifest) = open_sealed_with_provider(&blob, &provider, None, None).unwrap();
@@ -670,7 +737,8 @@ mod tests {
         let plaintext = b"for alice only";
 
         let mut m = make_hw_manifest(&issuer, &alice_pub, plaintext);
-        let blob = seal_hw_p256(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice_pub).unwrap();
+        let blob =
+            seal_hw_p256(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice_pub).unwrap();
 
         let bob_provider = SoftwareP256KeyProvider::new(bob);
         assert!(
@@ -688,11 +756,15 @@ mod tests {
         let plaintext = b"hw envelope";
 
         let mut m = make_hw_manifest(&issuer, &alice_pub, plaintext);
-        let blob = seal_hw_p256(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice_pub).unwrap();
+        let blob =
+            seal_hw_p256(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice_pub).unwrap();
 
         let wrong_alg = FileKeyProvider::new(ClassicIdentity::generate());
         let res = open_sealed_with_provider(&blob, &wrong_alg, None, None);
-        assert!(res.is_err(), "X25519 provider must not be accepted for an OSGT-HW-P256-v1 container");
+        assert!(
+            res.is_err(),
+            "X25519 provider must not be accepted for an OSGT-HW-P256-v1 container"
+        );
     }
 
     #[test]
@@ -707,7 +779,10 @@ mod tests {
         let mut m = make_hw_manifest(&issuer, &alice_pub, plaintext);
         m.suite = crypto::SUITE_CLASSIC_V1.to_string();
         let res = seal_hw_p256(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice_pub);
-        assert!(res.is_err(), "seal_hw_p256 must require manifest.suite == OSGT-HW-P256-v1");
+        assert!(
+            res.is_err(),
+            "seal_hw_p256 must require manifest.suite == OSGT-HW-P256-v1"
+        );
     }
 
     #[test]
@@ -715,9 +790,18 @@ mod tests {
         // Each manifest suite must map to a unique container header byte;
         // adding a new suite without updating this match would otherwise
         // silently shape-shift into an UnsupportedManifestSuite at seal time.
-        assert_eq!(suite_id_for_manifest(crypto::SUITE_CLASSIC_V1), Some(SUITE_CLASSIC_V1_ID));
-        assert_eq!(suite_id_for_manifest(crypto::SUITE_HYBRID_V1), Some(SUITE_HYBRID_V1_ID));
-        assert_eq!(suite_id_for_manifest(crypto::SUITE_HW_P256_V1), Some(SUITE_HW_P256_V1_ID));
+        assert_eq!(
+            suite_id_for_manifest(crypto::SUITE_CLASSIC_V1),
+            Some(SUITE_CLASSIC_V1_ID)
+        );
+        assert_eq!(
+            suite_id_for_manifest(crypto::SUITE_HYBRID_V1),
+            Some(SUITE_HYBRID_V1_ID)
+        );
+        assert_eq!(
+            suite_id_for_manifest(crypto::SUITE_HW_P256_V1),
+            Some(SUITE_HW_P256_V1_ID)
+        );
         assert_eq!(suite_id_for_manifest("OSGT-UNKNOWN"), None);
     }
 
@@ -727,10 +811,19 @@ mod tests {
         let alice = ClassicIdentity::generate();
         let plaintext = b"secret";
         let mut m = make_manifest(&issuer, &alice, plaintext);
-        let mut blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice.x25519_pub).unwrap();
+        let mut blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
         blob[7] ^= 0x01;
         match SealedFile::from_bytes(&blob) {
-            Err(ContainerError::SuiteMismatch { header, manifest_suite }) => {
+            Err(ContainerError::SuiteMismatch {
+                header,
+                manifest_suite,
+            }) => {
                 assert_eq!(header, 0);
                 assert_eq!(manifest_suite, crypto::SUITE_CLASSIC_V1);
             }
@@ -744,7 +837,13 @@ mod tests {
         let alice = ClassicIdentity::generate();
         let plaintext = b"secret";
         let mut m = make_manifest(&issuer, &alice, plaintext);
-        let mut blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice.x25519_pub).unwrap();
+        let mut blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
         blob.extend_from_slice(b"junk");
         match SealedFile::from_bytes(&blob) {
             Err(ContainerError::TrailingBytes(4)) => (),
@@ -758,8 +857,14 @@ mod tests {
         let alice = ClassicIdentity::generate();
         let plaintext = b"secret";
         let mut m = make_manifest(&issuer, &alice, plaintext);
-        m.policy["not_after"] = serde_json::json!(1000);  // long ago
-        let blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice.x25519_pub).unwrap();
+        m.policy["not_after"] = serde_json::json!(1000); // long ago
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
         match open_sealed(&blob, alice.x25519_priv.as_ref(), None, None) {
             Err(ContainerError::Precondition("file expired (not_after)")) => (),
             other => panic!("expected expiry error, got {:?}", other.is_ok()),
@@ -774,12 +879,16 @@ mod tests {
         let plaintext = b"limited";
         let mut m = make_manifest(&issuer, &alice, plaintext);
         m.policy["max_opens"] = serde_json::json!(1);
-        let blob = seal(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &alice.x25519_pub).unwrap();
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
 
-        let dir = std::env::temp_dir().join(format!(
-            "oversight-container-policy-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("oversight-container-policy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let ctx = oversight_policy::PolicyContext::local_only(&dir).unwrap();
 
@@ -818,7 +927,10 @@ mod tests {
         let recipients: Vec<&[u8]> = vec![&alice.x25519_pub, &bob.x25519_pub, &carol.x25519_pub];
         match seal_multi(plaintext, &mut m, issuer.ed25519_priv.as_ref(), &recipients) {
             Err(ContainerError::Precondition(msg)) => assert!(msg.contains("seal_multi disabled")),
-            other => panic!("expected seal_multi to fail closed, got {:?}", other.is_ok()),
+            other => panic!(
+                "expected seal_multi to fail closed, got {:?}",
+                other.is_ok()
+            ),
         }
     }
 }

@@ -134,8 +134,8 @@ pub fn embed_docx_metadata(
             .map_err(|e| FormatError::Internal(format!("ZIP entry error: {}", e)))?;
         let name = entry.name().to_string();
 
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         writer
             .start_file(&name, options)
             .map_err(|e| FormatError::Internal(format!("ZIP write error: {}", e)))?;
@@ -146,22 +146,20 @@ pub fn embed_docx_metadata(
             std::io::Read::read_to_end(&mut entry, &mut contents)
                 .map_err(|e| FormatError::Io(e))?;
             let modified = inject_keywords_into_core_xml(&contents, &tag)?;
-            std::io::Write::write_all(&mut writer, &modified)
-                .map_err(|e| FormatError::Io(e))?;
+            std::io::Write::write_all(&mut writer, &modified).map_err(|e| FormatError::Io(e))?;
         } else {
             // Copy entry unchanged
             let mut contents = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut contents)
                 .map_err(|e| FormatError::Io(e))?;
-            std::io::Write::write_all(&mut writer, &contents)
-                .map_err(|e| FormatError::Io(e))?;
+            std::io::Write::write_all(&mut writer, &contents).map_err(|e| FormatError::Io(e))?;
         }
     }
 
     // If there was no docProps/core.xml, create one
     if !found_core {
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
         writer
             .start_file("docProps/core.xml", options)
             .map_err(|e| FormatError::Internal(format!("ZIP write error: {}", e)))?;
@@ -192,8 +190,7 @@ pub fn extract_docx_metadata(docx_bytes: &[u8]) -> Result<DocxOversightMeta, For
     // Try to read docProps/core.xml
     if let Ok(mut entry) = archive.by_name("docProps/core.xml") {
         let mut contents = Vec::new();
-        std::io::Read::read_to_end(&mut entry, &mut contents)
-            .map_err(|e| FormatError::Io(e))?;
+        std::io::Read::read_to_end(&mut entry, &mut contents).map_err(|e| FormatError::Io(e))?;
         let keywords = extract_keywords_from_core_xml(&contents)?;
         if let Some(kw) = keywords {
             parse_oversight_tag(&kw, &mut meta);
@@ -217,8 +214,7 @@ pub fn extract_body_text(docx_bytes: &[u8]) -> Result<String, FormatError> {
         .map_err(|e| FormatError::Malformed(format!("missing word/document.xml: {}", e)))?;
 
     let mut contents = Vec::new();
-    std::io::Read::read_to_end(&mut entry, &mut contents)
-        .map_err(|e| FormatError::Io(e))?;
+    std::io::Read::read_to_end(&mut entry, &mut contents).map_err(|e| FormatError::Io(e))?;
 
     extract_text_elements(&contents)
 }
@@ -324,10 +320,7 @@ fn extract_keywords_from_core_xml(xml_bytes: &[u8]) -> Result<Option<String>, Fo
                 in_keywords = true;
             }
             Ok(Event::Text(ref t)) if in_keywords => {
-                let text = t
-                    .unescape()
-                    .unwrap_or_default()
-                    .to_string();
+                let text = t.unescape().unwrap_or_default().to_string();
                 return Ok(Some(text));
             }
             Ok(Event::End(ref e)) if e.name().as_ref() == b"cp:keywords" => {
@@ -366,10 +359,7 @@ fn extract_text_elements(xml_bytes: &[u8]) -> Result<String, FormatError> {
                 }
             }
             Ok(Event::Text(ref t)) if in_text => {
-                let text = t
-                    .unescape()
-                    .unwrap_or_default()
-                    .to_string();
+                let text = t.unescape().unwrap_or_default().to_string();
                 paragraph_texts.push(text);
             }
             Ok(Event::End(ref e)) => {
@@ -486,7 +476,10 @@ mod tests {
     fn sanitize_field_code_strips_dangerous() {
         assert_eq!(sanitize_field_code("normal text"), "normal text");
         assert_eq!(sanitize_field_code("{FIELD \\s}"), "FIELD s");
-        assert_eq!(sanitize_field_code("<script>alert('x')</script>"), "scriptalert(x)/script");
+        assert_eq!(
+            sanitize_field_code("<script>alert('x')</script>"),
+            "scriptalert(x)/script"
+        );
         assert_eq!(sanitize_field_code("hello&world"), "helloworld");
     }
 
@@ -502,7 +495,10 @@ mod tests {
     #[test]
     fn parse_oversight_tag_with_other_keywords() {
         let mut meta = DocxOversightMeta::default();
-        parse_oversight_tag("finance report oversight:cafebabe;issuer:alice quarterly", &mut meta);
+        parse_oversight_tag(
+            "finance report oversight:cafebabe;issuer:alice quarterly",
+            &mut meta,
+        );
         assert_eq!(meta.mark_id.as_deref(), Some("cafebabe"));
         assert_eq!(meta.issuer_id.as_deref(), Some("alice"));
     }

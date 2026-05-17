@@ -116,14 +116,13 @@ pub fn verify_inclusion_proof(
         return false;
     }
 
-    fn rec(
-        h_in: [u8; 32],
-        m: usize,
-        remaining: &[[u8; 32]],
-        n: usize,
-    ) -> Option<[u8; 32]> {
+    fn rec(h_in: [u8; 32], m: usize, remaining: &[[u8; 32]], n: usize) -> Option<[u8; 32]> {
         if n == 1 {
-            return if remaining.is_empty() { Some(h_in) } else { None };
+            return if remaining.is_empty() {
+                Some(h_in)
+            } else {
+                None
+            };
         }
         if remaining.is_empty() {
             return None;
@@ -278,9 +277,8 @@ impl TransparencyLog {
 
     /// Append a JSON event. Helper that canonicalizes and calls append().
     pub fn append_event(&self, event: &serde_json::Value) -> Result<usize> {
-        let bytes = serde_jcs::to_vec(event).map_err(|_| {
-            TlogError::Json(serde_json::Error::custom("canonicalization failed"))
-        })?;
+        let bytes = serde_jcs::to_vec(event)
+            .map_err(|_| TlogError::Json(serde_json::Error::custom("canonicalization failed")))?;
         self.append(&bytes)
     }
 
@@ -335,7 +333,7 @@ impl TransparencyLog {
         let leaves_copy: Vec<[u8; 32]> = leaves.clone();
         let leaf_hash_hex = hex::encode(leaves[index]);
         let tree_size = leaves.len();
-        drop(leaves);  // release before calling root() which also locks
+        drop(leaves); // release before calling root() which also locks
 
         let path = audit_path(&leaves_copy, index);
         let root = self.root();

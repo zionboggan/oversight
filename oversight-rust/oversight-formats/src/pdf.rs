@@ -292,12 +292,10 @@ fn sanitize_pdf_string(s: &str) -> String {
 
 /// Helper to get a string value from a PDF dictionary.
 fn get_string_from_dict(dict: &Dictionary, key: &str) -> Option<String> {
-    dict.get(key.as_bytes())
-        .ok()
-        .and_then(|obj| match obj {
-            Object::String(bytes, _) => String::from_utf8(bytes.clone()).ok(),
-            _ => None,
-        })
+    dict.get(key.as_bytes()).ok().and_then(|obj| match obj {
+        Object::String(bytes, _) => String::from_utf8(bytes.clone()).ok(),
+        _ => None,
+    })
 }
 
 /// Simplified text extraction from a PDF content stream.

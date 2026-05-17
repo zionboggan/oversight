@@ -33,16 +33,15 @@ use ed25519_dalek::{
     VerifyingKey as EdVerifyingKey,
 };
 use hkdf::Hkdf;
+use p256::{
+    ecdh::diffie_hellman as p256_diffie_hellman, elliptic_curve::sec1::ToEncodedPoint,
+    PublicKey as P256PublicKey, SecretKey as P256SecretKey,
+};
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519StaticSecret};
 use zeroize::{Zeroize, Zeroizing};
-use p256::{
-    ecdh::diffie_hellman as p256_diffie_hellman,
-    elliptic_curve::sec1::ToEncodedPoint,
-    PublicKey as P256PublicKey, SecretKey as P256SecretKey,
-};
 
 pub const XCHACHA_KEY_LEN: usize = 32;
 pub const XCHACHA_NONCE_LEN: usize = 24;
@@ -147,7 +146,13 @@ pub fn aead_encrypt(
     let cipher = XChaCha20Poly1305::new(key.into());
     let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
     let ct = cipher
-        .encrypt(&nonce, Payload { msg: plaintext, aad })
+        .encrypt(
+            &nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
         .map_err(|_| CryptoError::AeadFailed)?;
     let mut nonce_arr = [0u8; XCHACHA_NONCE_LEN];
     nonce_arr.copy_from_slice(&nonce);
@@ -174,7 +179,13 @@ pub fn aead_decrypt(
     }
     let cipher = XChaCha20Poly1305::new(key.into());
     cipher
-        .decrypt(nonce.into(), Payload { msg: ciphertext, aad })
+        .decrypt(
+            nonce.into(),
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
         .map_err(|_| CryptoError::AeadFailed)
 }
 
@@ -225,7 +236,11 @@ impl WrappedDek {
         eph.copy_from_slice(&eph_bytes);
         let mut nonce = [0u8; XCHACHA_NONCE_LEN];
         nonce.copy_from_slice(&nonce_bytes);
-        Ok(WrappedDek { ephemeral_pub: eph, nonce, wrapped_dek: wrapped })
+        Ok(WrappedDek {
+            ephemeral_pub: eph,
+            nonce,
+            wrapped_dek: wrapped,
+        })
     }
 }
 
@@ -256,7 +271,11 @@ pub fn wrap_dek_for_recipient(
         .map_err(|_| CryptoError::Hkdf)?;
 
     let (nonce, wrapped) = aead_encrypt(kek.as_ref(), dek, b"oversight-dek")?;
-    Ok(WrappedDek { ephemeral_pub: eph_pub.to_bytes(), nonce, wrapped_dek: wrapped })
+    Ok(WrappedDek {
+        ephemeral_pub: eph_pub.to_bytes(),
+        nonce,
+        wrapped_dek: wrapped,
+    })
 }
 
 pub fn unwrap_dek(
@@ -359,12 +378,18 @@ pub struct FileKeyProvider {
 impl FileKeyProvider {
     /// Wrap an existing [`ClassicIdentity`] without a label.
     pub fn new(identity: ClassicIdentity) -> Self {
-        Self { inner: identity, label: None }
+        Self {
+            inner: identity,
+            label: None,
+        }
     }
 
     /// Wrap with a label (e.g., the recipient_id from the identity JSON).
     pub fn with_label(identity: ClassicIdentity, label: impl Into<String>) -> Self {
-        Self { inner: identity, label: Some(label.into()) }
+        Self {
+            inner: identity,
+            label: Some(label.into()),
+        }
     }
 
     /// Borrow the underlying classic identity. Hardware providers won't be
@@ -464,7 +489,10 @@ impl SoftwareP256Identity {
         debug_assert_eq!(bytes.len(), P256_PUBLIC_KEY_LEN);
         let mut public_sec1 = [0u8; P256_PUBLIC_KEY_LEN];
         public_sec1.copy_from_slice(bytes);
-        Self { secret, public_sec1 }
+        Self {
+            secret,
+            public_sec1,
+        }
     }
 
     pub fn public_key_sec1(&self) -> &[u8; P256_PUBLIC_KEY_LEN] {
@@ -518,7 +546,11 @@ impl WrappedDekP256 {
         eph.copy_from_slice(&eph_bytes);
         let mut nonce = [0u8; XCHACHA_NONCE_LEN];
         nonce.copy_from_slice(&nonce_bytes);
-        Ok(WrappedDekP256 { ephemeral_pub: eph, nonce, wrapped_dek: wrapped })
+        Ok(WrappedDekP256 {
+            ephemeral_pub: eph,
+            nonce,
+            wrapped_dek: wrapped,
+        })
     }
 }
 
@@ -535,11 +567,12 @@ pub fn wrap_dek_for_recipient_p256(
             got: recipient_p256_pub_sec1.len(),
         });
     }
-    let recipient_pub = P256PublicKey::from_sec1_bytes(recipient_p256_pub_sec1)
-        .map_err(|_| CryptoError::InvalidKeyLength {
+    let recipient_pub = P256PublicKey::from_sec1_bytes(recipient_p256_pub_sec1).map_err(|_| {
+        CryptoError::InvalidKeyLength {
             expected: P256_PUBLIC_KEY_LEN,
             got: recipient_p256_pub_sec1.len(),
-        })?;
+        }
+    })?;
 
     let eph_secret = P256SecretKey::random(&mut OsRng);
     let eph_pub = eph_secret.public_key();
@@ -563,7 +596,11 @@ pub fn wrap_dek_for_recipient_p256(
         .map_err(|_| CryptoError::Hkdf)?;
 
     let (nonce, wrapped) = aead_encrypt(kek.as_ref(), dek, b"oversight-hw-p256-dek")?;
-    Ok(WrappedDekP256 { ephemeral_pub: eph_pub_arr, nonce, wrapped_dek: wrapped })
+    Ok(WrappedDekP256 {
+        ephemeral_pub: eph_pub_arr,
+        nonce,
+        wrapped_dek: wrapped,
+    })
 }
 
 /// Software-backed P-256 [`KeyProvider`]. Useful for tests and as a fallback
@@ -576,11 +613,17 @@ pub struct SoftwareP256KeyProvider {
 
 impl SoftwareP256KeyProvider {
     pub fn new(identity: SoftwareP256Identity) -> Self {
-        Self { inner: identity, label: None }
+        Self {
+            inner: identity,
+            label: None,
+        }
     }
 
     pub fn with_label(identity: SoftwareP256Identity, label: impl Into<String>) -> Self {
-        Self { inner: identity, label: Some(label.into()) }
+        Self {
+            inner: identity,
+            label: Some(label.into()),
+        }
     }
 
     pub fn identity(&self) -> &SoftwareP256Identity {
@@ -792,7 +835,9 @@ mod tests {
 
         // Raw x25519_dalek for comparison.
         let bob_sk = X25519StaticSecret::from(bob_priv_copy);
-        let raw = bob_sk.diffie_hellman(&X25519PublicKey::from(alice_pub_copy)).to_bytes();
+        let raw = bob_sk
+            .diffie_hellman(&X25519PublicKey::from(alice_pub_copy))
+            .to_bytes();
 
         assert_eq!(via_provider.as_slice(), &raw[..]);
     }
@@ -843,7 +888,10 @@ mod tests {
 
         // Bob's provider should fail to recover the DEK.
         let res = unwrap_dek_with_provider(&wrapped, &provider_bob);
-        assert!(res.is_err(), "Bob's provider must not unwrap a DEK addressed to Alice");
+        assert!(
+            res.is_err(),
+            "Bob's provider must not unwrap a DEK addressed to Alice"
+        );
     }
 
     // ------- P-256 (OSGT-HW-P256-v1) ----------------------------------------
@@ -888,7 +936,10 @@ mod tests {
         let wrapped = wrap_dek_for_recipient_p256(dek.as_ref(), &alice_pub).unwrap();
 
         let res = unwrap_dek_with_provider_p256(&wrapped, &provider_bob);
-        assert!(res.is_err(), "Bob's P-256 provider must not unwrap a DEK addressed to Alice");
+        assert!(
+            res.is_err(),
+            "Bob's P-256 provider must not unwrap a DEK addressed to Alice"
+        );
     }
 
     #[test]
@@ -903,7 +954,10 @@ mod tests {
 
         let bob_x25519 = FileKeyProvider::new(ClassicIdentity::generate());
         let res = unwrap_dek_with_provider_p256(&wrapped, &bob_x25519);
-        assert!(res.is_err(), "X25519 provider must not be accepted for a P-256 envelope");
+        assert!(
+            res.is_err(),
+            "X25519 provider must not be accepted for a P-256 envelope"
+        );
     }
 
     #[test]

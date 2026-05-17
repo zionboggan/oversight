@@ -112,19 +112,13 @@ fn sanitize_file_id(file_id: &str) -> Result<()> {
 
 fn counter_path(ctx: &PolicyContext, file_id: &str) -> Result<PathBuf> {
     sanitize_file_id(file_id)?;
-    let dir = ctx
-        .state_dir
-        .as_ref()
-        .ok_or(PolicyError::ContextRequired)?;
+    let dir = ctx.state_dir.as_ref().ok_or(PolicyError::ContextRequired)?;
     Ok(dir.join(format!("{}.opens.json", file_id)))
 }
 
 fn lock_path(ctx: &PolicyContext, file_id: &str) -> Result<PathBuf> {
     sanitize_file_id(file_id)?;
-    let dir = ctx
-        .state_dir
-        .as_ref()
-        .ok_or(PolicyError::ContextRequired)?;
+    let dir = ctx.state_dir.as_ref().ok_or(PolicyError::ContextRequired)?;
     Ok(dir.join(format!("{}.opens.lock", file_id)))
 }
 
@@ -255,7 +249,8 @@ pub fn record_open(manifest: &Manifest, ctx: Option<&PolicyContext>) -> Result<u
             "registry max_opens enforcement is not implemented; refusing local fallback".into(),
         )),
         Mode::Hybrid => Err(PolicyError::Violation(
-            "hybrid max_opens enforcement is not implemented; refusing silent local fallback".into(),
+            "hybrid max_opens enforcement is not implemented; refusing silent local fallback"
+                .into(),
         )),
     }
 }
@@ -281,6 +276,7 @@ mod tests {
                 recipient_id: "alice".into(),
                 x25519_pub: "00".repeat(32),
                 ed25519_pub: None,
+                p256_pub: None,
             },
             "https://registry",
             "text/plain",
@@ -317,7 +313,9 @@ mod tests {
             "jurisdiction": "EU",
         }));
         let dir = TempDir::new().unwrap();
-        let ctx = PolicyContext::local_only(dir.path()).unwrap().with_jurisdiction("US");
+        let ctx = PolicyContext::local_only(dir.path())
+            .unwrap()
+            .with_jurisdiction("US");
         assert!(check_policy(&m, Some(&ctx)).is_err());
     }
 
@@ -339,7 +337,7 @@ mod tests {
         }));
         assert_eq!(record_open(&m, Some(&ctx)).unwrap(), 1);
         assert_eq!(record_open(&m, Some(&ctx)).unwrap(), 2);
-        assert!(record_open(&m, Some(&ctx)).is_err());  // 3rd exceeds
+        assert!(record_open(&m, Some(&ctx)).is_err()); // 3rd exceeds
     }
 
     #[test]

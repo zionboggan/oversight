@@ -217,14 +217,14 @@ wrap/unwrap, `WrappedDekP256` envelope, and `SoftwareP256KeyProvider`
 (in-memory P-256 reference impl) are in `oversight-crypto`. Cross-suite
 envelopes are rejected explicitly. 21/21 tests in the crate pass.
 
-The remaining work is the `PivKeyProvider` (PKCS#11 against a YubiKey /
-Nitrokey / OnlyKey PIV slot) — a different `KeyProvider` impl that calls
-into `cryptoki` instead of holding the scalar in process — plus the
-manifest / container plumbing that lets `OSGT-HW-P256-v1` ride the
-existing seal pipeline. The
-registry records whether each recipient pubkey is file-backed or
-hardware-backed so issuers can require hardware backing for sensitive
-material.
+**v0.4.11 closed the software reference path across Rust, Python, and the
+browser inspector.** `OSGT-HW-P256-v1` now has manifest/container plumbing,
+Python wrap/unwrap parity, and a public viewer sample fixture. The remaining
+hardware work is the `PivKeyProvider` (PKCS#11 against a YubiKey / Nitrokey /
+OnlyKey PIV slot), a different `KeyProvider` implementation that calls into
+`cryptoki` instead of holding the scalar in process. The registry records
+whether each recipient pubkey is file-backed or hardware-backed so issuers can
+require hardware backing for sensitive material.
 
 ### Registry in Rust
 
@@ -310,8 +310,8 @@ via VM and retype, hardware-key pull mid-open.
 | 8 | Browser inspector, classic-suite decrypt, opsec scanner + CI | Shipped |
 | 9 | Hybrid PQ decrypt in browser | Shipped (2026-05-03) |
 | 10 | Outlook add-in | Next |
-| 11 | Hardware KeyProvider in Rust | In progress |
-| 12 | Rust Axum registry, migration tooling | In progress |
+| 11 | Hardware KeyProvider in Rust | Suite shipped (v0.4.11); PIV provider next |
+| 12 | Rust Axum registry, migration tooling | Migration tooling shipped; deployment burn-in next |
 | 13 | arXiv preprint, threat-model repo document | Mid-term |
 | 14 | IETF Internet-Draft, CFRG or equivalent BoF | Mid-term |
 | 15 | USENIX Security Cycle 2, Black Hat EU 2026 | Mid-term |

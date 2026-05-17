@@ -73,8 +73,7 @@ static URL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"https?://\S+").unwrap());
 static EMAIL_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b[\w.+-]+@[\w.-]+\.\w+\b").unwrap());
 static INLINE_CODE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"`[^`]+`").unwrap());
 static CODE_BLOCK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)```.*?```").unwrap());
-static UNIX_PATH_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?:^|\s)(?:/|~/|\./)[^\s]+").unwrap());
+static UNIX_PATH_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?:^|\s)(?:/|~/|\./)[^\s]+").unwrap());
 static HEX_BLOB_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b[A-Fa-f0-9]{16,}\b").unwrap());
 static BASE64_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b[A-Za-z0-9+/]{32,}={0,2}\b").unwrap());
 static WORD_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Za-z]+)\b").unwrap());
@@ -83,8 +82,13 @@ static WORD_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\b([A-Za-z]+)\b").unwrap
 fn skip_mask(text: &str) -> Vec<bool> {
     let mut mask = vec![false; text.len()];
     let patterns: &[&Lazy<Regex>] = &[
-        &URL_RE, &EMAIL_RE, &INLINE_CODE_RE, &CODE_BLOCK_RE, &UNIX_PATH_RE,
-        &HEX_BLOB_RE, &BASE64_RE,
+        &URL_RE,
+        &EMAIL_RE,
+        &INLINE_CODE_RE,
+        &CODE_BLOCK_RE,
+        &UNIX_PATH_RE,
+        &HEX_BLOB_RE,
+        &BASE64_RE,
     ];
     for pat in patterns {
         for m in pat.find_iter(text) {
@@ -179,8 +183,15 @@ fn case_preserve(replacement: &str, orig: &str) -> String {
     if orig.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) && orig.len() > 1 {
         return replacement.to_uppercase();
     }
-    let first_upper = orig.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-    let rest_lower = orig.chars().skip(1).all(|c| c.is_lowercase() || !c.is_alphabetic());
+    let first_upper = orig
+        .chars()
+        .next()
+        .map(|c| c.is_uppercase())
+        .unwrap_or(false);
+    let rest_lower = orig
+        .chars()
+        .skip(1)
+        .all(|c| c.is_lowercase() || !c.is_alphabetic());
     if first_upper && rest_lower {
         let mut s = String::new();
         for (i, c) in replacement.chars().enumerate() {
@@ -281,7 +292,8 @@ pub fn verify_synonyms(text: &str, candidate_mark_id: &[u8], threshold: f64) -> 
 mod tests {
     use super::*;
 
-    const TEST_TEXT: &str = "Q3 revenue performance exceeded expectations across all business units. \
+    const TEST_TEXT: &str =
+        "Q3 revenue performance exceeded expectations across all business units. \
 The team plans to continue the expansion strategy outlined in our report at \
 https://internal.example.com/q3-2026.pdf and will begin hiring in \
 /home/claude/hiring_plan.docx this month. However, there are important risks \
@@ -312,10 +324,14 @@ Overall the results show clear momentum and a strong basis for continued growth.
     fn url_and_path_preserved_through_embed() {
         let mark = b"\x01\x23\x45\x67\x89\xab\xcd\xef";
         let marked = embed_synonyms(TEST_TEXT, mark, 5);
-        assert!(marked.contains("https://internal.example.com/q3-2026.pdf"),
-                "URL was munged");
-        assert!(marked.contains("/home/claude/hiring_plan.docx"),
-                "path was munged");
+        assert!(
+            marked.contains("https://internal.example.com/q3-2026.pdf"),
+            "URL was munged"
+        );
+        assert!(
+            marked.contains("/home/claude/hiring_plan.docx"),
+            "path was munged"
+        );
     }
 
     #[test]
@@ -334,7 +350,11 @@ Overall the results show clear momentum and a strong basis for continued growth.
         let marked = embed_synonyms(TEST_TEXT, good, 5);
         let (ok, score) = verify_synonyms(&marked, bad, 0.70);
         assert!(!ok, "wrong mark verified (score={})", score);
-        assert!(score < 0.70, "wrong-mark score suspiciously high: {}", score);
+        assert!(
+            score < 0.70,
+            "wrong-mark score suspiciously high: {}",
+            score
+        );
     }
 
     #[test]

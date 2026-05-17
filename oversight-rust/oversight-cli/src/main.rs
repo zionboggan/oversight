@@ -214,7 +214,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &recipient_pub_bytes,
             )?;
             std::fs::write(&output, &blob)?;
-            println!("✓ sealed {} -> {} ({} bytes)", input.display(), output.display(), blob.len());
+            println!(
+                "✓ sealed {} -> {} ({} bytes)",
+                input.display(),
+                output.display(),
+                blob.len()
+            );
             println!("  file_id: {}", manifest.file_id);
         }
 
@@ -227,8 +232,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let recipient_id = load_identity(&recipient)?;
             let blob = std::fs::read(&input)?;
             let policy_ctx = PolicyContext::local_only(policy_state_dir)?;
-            let (plaintext, manifest) =
-                open_sealed(&blob, recipient_id.x25519_priv.as_ref(), None, Some(&policy_ctx))?;
+            let (plaintext, manifest) = open_sealed(
+                &blob,
+                recipient_id.x25519_priv.as_ref(),
+                None,
+                Some(&policy_ctx),
+            )?;
             if output.as_os_str() == "-" {
                 use std::io::Write;
                 std::io::stdout().write_all(&plaintext)?;
@@ -251,7 +260,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             println!("  suite_id:        {}", sf.suite_id);
             println!("  ciphertext_len:  {} bytes", sf.ciphertext.len());
             println!("  aead_nonce:      {}", hex::encode(sf.aead_nonce));
-            println!("  signature valid: {}", sf.manifest.verify().unwrap_or(false));
+            println!(
+                "  signature valid: {}",
+                sf.manifest.verify().unwrap_or(false)
+            );
         }
 
         Commands::Watermark {
@@ -273,7 +285,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            let marked = adapter.embed_watermark(&data, &mark_bytes)
+            let marked = adapter
+                .embed_watermark(&data, &mark_bytes)
                 .map_err(|e| format!("embed failed: {}", e))?;
             std::fs::write(&output, &marked)?;
             println!(
@@ -291,7 +304,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let registry = FormatRegistry::default();
 
             let adapter = resolve_adapter(&registry, &data, format.as_deref(), &input)?;
-            let candidates = adapter.extract_watermark(&data)
+            let candidates = adapter
+                .extract_watermark(&data)
                 .map_err(|e| format!("extract failed: {}", e))?;
 
             println!(
@@ -350,9 +364,14 @@ fn resolve_adapter<'a>(
     path: &PathBuf,
 ) -> Result<&'a dyn FormatAdapter, Box<dyn std::error::Error>> {
     if let Some(name) = format_override {
-        return registry
-            .by_name(name)
-            .ok_or_else(|| format!("unknown format: '{}'. available: {:?}", name, registry.adapter_names()).into());
+        return registry.by_name(name).ok_or_else(|| {
+            format!(
+                "unknown format: '{}'. available: {:?}",
+                name,
+                registry.adapter_names()
+            )
+            .into()
+        });
     }
 
     // Try content-based detection first

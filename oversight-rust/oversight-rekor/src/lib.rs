@@ -15,8 +15,7 @@ use std::collections::BTreeMap;
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use ed25519_dalek::{
-    Signature, Signer, SigningKey, Verifier, VerifyingKey, SECRET_KEY_LENGTH,
-    SIGNATURE_LENGTH,
+    Signature, Signer, SigningKey, Verifier, VerifyingKey, SECRET_KEY_LENGTH, SIGNATURE_LENGTH,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -98,7 +97,10 @@ impl OversightRegistrationPredicate {
             "issuer_pubkey_ed25519".into(),
             Value::from(self.issuer_pubkey_ed25519.clone()),
         );
-        m.insert("recipient_id".into(), Value::from(self.recipient_id.clone()));
+        m.insert(
+            "recipient_id".into(),
+            Value::from(self.recipient_id.clone()),
+        );
         m.insert(
             "recipient_pubkey_sha256".into(),
             Value::from(self.recipient_pubkey_sha256.clone()),
@@ -131,8 +133,7 @@ impl OversightRegistrationPredicate {
 
 /// Compute `recipient_pubkey_sha256` from the raw X25519 public key (hex).
 pub fn hash_recipient_pubkey(x25519_pub_hex: &str) -> Result<String, RekorError> {
-    let raw = hex::decode(x25519_pub_hex)
-        .map_err(|_| RekorError::KeyLength("x25519 pub hex"))?;
+    let raw = hex::decode(x25519_pub_hex).map_err(|_| RekorError::KeyLength("x25519 pub hex"))?;
     let h = Sha256::digest(&raw);
     Ok(hex::encode(h))
 }
@@ -324,7 +325,10 @@ pub fn verify_inclusion_offline(
         return (false, "dsse payload missing subject digest");
     }
     if subject_digest != Some(expected_content_hash_sha256_hex) {
-        return (false, "dsse subject digest does not match expected content hash");
+        return (
+            false,
+            "dsse subject digest does not match expected content hash",
+        );
     }
     let tle = match bundle_rekor_field.get("transparency_log_entry") {
         Some(v) if v.is_object() => v,
@@ -334,7 +338,10 @@ pub fn verify_inclusion_offline(
         .iter()
         .any(|k| tle.get(*k).is_some());
     if !has_proof {
-        return (false, "transparency_log_entry has no inclusion proof or logEntry shape");
+        return (
+            false,
+            "transparency_log_entry has no inclusion proof or logEntry shape",
+        );
     }
     (true, "ok")
 }
@@ -511,8 +518,7 @@ mod tests {
         // Python: hashlib.sha256(bytes.fromhex("42"*32)).hexdigest()
         let h = hash_recipient_pubkey(&"42".repeat(32)).unwrap();
         // Pre-computed reference value.
-        let expected =
-            "bcdfe2c5b3b1c6c4f0d2b3f9c2c95dc6c0f9b1e6f6f9e60c7e75c5f37e80f1d4";
+        let expected = "bcdfe2c5b3b1c6c4f0d2b3f9c2c95dc6c0f9b1e6f6f9e60c7e75c5f37e80f1d4";
         // We don't hard-code the exact digest here (would brittle-tie to a
         // specific byte pattern); instead just check length + determinism.
         assert_eq!(h.len(), 64);
@@ -561,7 +567,8 @@ mod tests {
         let stmt = build_statement("a", &"b".repeat(64), &pred);
         let env = sign_dsse(&stmt, &sk.to_bytes(), "").unwrap();
         let bundle_rekor = serde_json::json!({});
-        let (ok, reason) = verify_inclusion_offline(&bundle_rekor, &env, pk.as_bytes(), &"b".repeat(64));
+        let (ok, reason) =
+            verify_inclusion_offline(&bundle_rekor, &env, pk.as_bytes(), &"b".repeat(64));
         assert!(!ok);
         assert!(reason.contains("transparency_log_entry"));
     }
@@ -589,7 +596,8 @@ mod tests {
         let bundle_rekor = serde_json::json!({
             "transparency_log_entry": {"inclusionProof": {}}
         });
-        let (ok, reason) = verify_inclusion_offline(&bundle_rekor, &env, pk.as_bytes(), &"c".repeat(64));
+        let (ok, reason) =
+            verify_inclusion_offline(&bundle_rekor, &env, pk.as_bytes(), &"c".repeat(64));
         assert!(!ok);
         assert!(reason.contains("subject digest"));
     }

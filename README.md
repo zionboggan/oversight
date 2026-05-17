@@ -2,7 +2,7 @@
 
 **Open protocol for cryptographic data provenance, recipient attribution, and leak detection.**
 
-Co-authored by Zion Boggan and Claude Opus 4.6/4.7 (Anthropic) and Codex ChatGPT-5-4 (OpenAI).
+Co-authored by Zion Boggan, Claude Opus 4.6/4.7 (Anthropic), and Codex (GPT-5.4, OpenAI).
 
 Format-agnostic. Post-quantum ready (ML-KEM-768 + ML-DSA-65). Layered watermarking with honest limits: L1/L2 are lightweight steganographic signals, L3 is opt-in semantic marking for prose, and content fingerprinting helps identify leaked copies even when fragile marks are destroyed.
 
@@ -79,6 +79,20 @@ oversight-registry --db rust-registry.sqlite \
 
 Remove `--migrate-dry-run` to copy manifests, beacons, watermarks, events, and
 corpus rows into the Rust database.
+
+## Current main after v0.4.11
+
+`main` is past the v0.4.11 hardware-key tag. The live registry deployment
+path now includes the Compose/Caddy `live` profile, `.env.example` operator
+secrets, and shared write-side token enforcement across the Python FastAPI
+and Rust Axum registries. The Rust registry also has Python-to-Rust SQLite
+migration tooling (`--migrate-from`, `--migrate-dry-run`) so operators can
+preflight and copy attribution rows without treating the Python reference as
+a permanent production dependency.
+
+The next Rust-registry gate is operational burn-in: longer-running deployment
+tests, migration validation against real operator databases, and a final
+wire-format stability declaration before v1.0.
 
 ## Quick start
 
@@ -403,18 +417,19 @@ project does not backport fixes below the current stable line.
 
 | Layer | Checks | Status |
 |---|---|---|
-| Python test_e2e | 11 | green |
-| Python test_e2e_v2 | 13 | green |
-| Python test_pq | 7 | green |
-| Rust oversight-crypto | 7 | green |
-| Rust oversight-manifest | 2 | green |
-| Rust oversight-container | 8 | green |
-| Rust oversight-watermark | 4 | green |
-| Rust oversight-tlog | 7 | green |
-| Rust oversight-policy | 6 | green |
+| Python pytest suite | 10 | green |
+| Rust oversight-container | 17 | green |
+| Rust oversight-crypto | 21 | green |
+| Rust oversight-formats | 35 | green |
+| Rust oversight-manifest | 3 | green |
+| Rust oversight-policy | 7 | green |
+| Rust oversight-registry | 8 | green |
+| Rust oversight-rekor | 10 | green |
 | Rust oversight-semantic | 8 | green |
+| Rust oversight-tlog | 7 | green |
+| Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total | 76 | all green |
+| Total automated Rust unit tests | 120 | all green |
 
 ## Design principles (what Oversight never does)
 
@@ -432,7 +447,11 @@ project does not backport fixes below the current stable line.
   Public-log interoperability is now via Rekor DSSE attestations; the local log remains
   a lightweight registry integrity mechanism, not a drop-in replacement for Rekor.
 - **No independent security audit yet.** Planned for 2027. Until then: user-beware, cryptographer-review welcome. Open an issue.
-- **Rust port is core-only.** ~1,500 LOC ported. The remaining ~5,500 LOC (semantic dictionary, format adapters, registry server, integrations) is multi-release scope. Python is still the canonical reference.
+- **Rust port is broad but not final.** The Rust workspace now covers the
+  cryptographic core, manifests, containers, policy checks, watermark
+  detection, semantic helpers, format adapters, and the Axum/SQLx registry.
+  Python remains the canonical reference until the Rust registry finishes
+  deployment burn-in, migration validation, and v1.0 wire-format freeze.
 
 ## License
 
