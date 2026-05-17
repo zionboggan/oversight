@@ -1,15 +1,3 @@
-//! Oversight v1.0 Registry Server — Axum + SQLx
-//!
-//! Rust port of the Python FastAPI registry (`registry/server.py`).
-//!
-//! Features:
-//!   - SQLite with WAL mode (via SQLx) for concurrent access
-//!   - Ed25519 manifest signature verification on /register
-//!   - Token bucket rate limiting with X-Forwarded-For support
-//!   - RFC 6962 Merkle transparency log
-//!   - Optional Rekor v2 attestation
-//!   - Registry Ed25519 identity for signing log entries
-
 #![forbid(unsafe_code)]
 
 mod auth;
@@ -39,37 +27,41 @@ use tower_http::trace::TraceLayer;
 
 pub const VERSION: &str = "1.0.0";
 
-// ---- CLI args -----------------------------------------------------------
-
 #[derive(Parser, Debug)]
 #[command(name = "oversight-registry", version = VERSION, about = "Oversight attribution registry server")]
 struct Args {
-    /// Host to bind to (overridden by OVERSIGHT_HOST env)
-    #[arg(long, default_value = "127.0.0.1")]
+    #[arg(
+        long,
+        default_value = "127.0.0.1",
+        help = "Host to bind to (overridden by OVERSIGHT_HOST env)"
+    )]
     host: String,
 
-    /// Port to bind to (overridden by OVERSIGHT_PORT env)
-    #[arg(long, default_value = "8080")]
+    #[arg(
+        long,
+        default_value = "8080",
+        help = "Port to bind to (overridden by OVERSIGHT_PORT env)"
+    )]
     port: u16,
 
-    /// SQLite database path (overridden by OVERSIGHT_DB env)
-    #[arg(long)]
+    #[arg(long, help = "SQLite database path (overridden by OVERSIGHT_DB env)")]
     db: Option<String>,
 
-    /// Data directory for tlog and identity key (overridden by OVERSIGHT_DATA env)
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Data directory for tlog and identity key (overridden by OVERSIGHT_DATA env)"
+    )]
     data_dir: Option<String>,
 
-    /// Copy rows from a Python registry SQLite database into --db and exit
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Copy rows from a Python registry SQLite database into --db and exit"
+    )]
     migrate_from: Option<String>,
 
-    /// Report migration row counts without writing to --db
-    #[arg(long)]
+    #[arg(long, help = "Report migration row counts without writing to --db")]
     migrate_dry_run: bool,
 }
-
-// ---- Application state --------------------------------------------------
 
 pub struct AppState {
     pub db: SqlitePool,
@@ -83,19 +75,15 @@ pub struct AppState {
     pub rekor_url: String,
 }
 
-/// Registry's Ed25519 identity keypair (hex-encoded).
 pub struct RegistryIdentity {
     pub ed25519_priv: String,
     pub ed25519_pub: String,
 }
 
-// ---- Rate limiter (token bucket with LRU eviction) ----------------------
-
 pub struct RateLimiter {
     rate: f64,
     burst: f64,
     max_keys: usize,
-    /// Map from client key -> (tokens, last_time)
     state: Mutex<HashMap<String, (f64, Instant)>>,
 }
 
@@ -129,9 +117,7 @@ impl RateLimiter {
     }
 
     fn evict_if_needed(&self, state: &mut HashMap<String, (f64, Instant)>) {
-        // Simple eviction: if over capacity, remove oldest entries.
         while state.len() > self.max_keys {
-            // Find the oldest entry
             if let Some(oldest_key) = state
                 .iter()
                 .min_by_key(|(_, (_, t))| *t)
@@ -145,14 +131,10 @@ impl RateLimiter {
     }
 }
 
-// ---- Helpers ------------------------------------------------------------
-
-/// ISO 8601 UTC timestamp.
 pub fn timestamp_stub() -> String {
     chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
-/// Extract the client key for rate limiting.
 fn client_key(headers: &HeaderMap, addr: Option<&SocketAddr>, trusted_proxy: bool) -> String {
     if trusted_proxy {
         if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
@@ -175,7 +157,6 @@ fn same_file_path(a: &std::path::Path, b: &std::path::Path) -> bool {
     }
 }
 
-/// Load or create the registry Ed25519 identity keypair.
 fn load_or_create_identity(data_dir: &PathBuf) -> Option<RegistryIdentity> {
     let identity_path = data_dir.join("registry-identity.json");
 
@@ -198,7 +179,6 @@ fn load_or_create_identity(data_dir: &PathBuf) -> Option<RegistryIdentity> {
         }
     }
 
-    // Generate new identity
     use ed25519_dalek::SigningKey;
     use rand_core::OsRng;
 
@@ -217,8 +197,6 @@ fn load_or_create_identity(data_dir: &PathBuf) -> Option<RegistryIdentity> {
             .as_secs(),
     });
 
-    // Write with restrictive permissions. On Unix we'd use mode 0o600;
-    // on Windows we write normally (ACLs handle access control).
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -301,8 +279,6 @@ fn cors_layer() -> CorsLayer {
         .max_age(std::time::Duration::from_secs(3600))
 }
 
-// ---- Rate-limit middleware ----------------------------------------------
-
 async fn rate_limit_middleware(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -317,11 +293,8 @@ async fn rate_limit_middleware(
     Ok(next.run(req).await)
 }
 
-// ---- Server entry point -------------------------------------------------
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing (structured logging).
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -331,7 +304,6 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    // Resolve config from env vars (higher priority) or CLI args.
     let host = std::env::var("OVERSIGHT_HOST").unwrap_or(args.host);
     let port: u16 = std::env::var("OVERSIGHT_PORT")
         .ok()
@@ -386,10 +358,8 @@ async fn main() -> anyhow::Result<()> {
     let rekor_url = std::env::var("OVERSIGHT_REKOR_URL")
         .unwrap_or_else(|_| oversight_rekor::DEFAULT_REKOR_URL.to_string());
 
-    // Ensure data directory exists.
     fs::create_dir_all(&data_dir)?;
 
-    // Initialize database.
     tracing::info!(path = %db_path.display(), "opening database");
     let pool = db::create_pool(&db_path).await?;
     db::run_migrations(&pool).await?;
@@ -408,7 +378,6 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Initialize transparency log.
     let tlog_dir = data_dir.join("tlog");
     let identity = load_or_create_identity(&data_dir);
     let tlog = TransparencyLog::open_with_signer(
@@ -436,7 +405,6 @@ async fn main() -> anyhow::Result<()> {
         rekor_url,
     });
 
-    // Build router.
     let app = Router::new()
         .route("/health", get(routes::health::health))
         .route(
@@ -474,7 +442,6 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    // Bind and serve.
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| anyhow::anyhow!("invalid bind address: {e}"))?;
@@ -493,7 +460,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Wait for SIGINT / SIGTERM (Unix) or Ctrl+C (all platforms).
 async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()

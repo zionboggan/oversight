@@ -1,5 +1,3 @@
-//! POST /attribute — attribution lookup by token_id, mark_id, or perceptual_hash.
-
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::Json;
@@ -23,7 +21,6 @@ pub async fn attribute(
         "operator",
     )?;
 
-    // Validate input sizes
     if let Some(ref id) = q.token_id {
         if id.len() > MAX_ID_LEN {
             return Err(RegistryError::BadRequest("token_id too long".into()));
@@ -45,7 +42,6 @@ pub async fn attribute(
         }
     }
 
-    // Determine lookup strategy (same priority as Python server)
     let (file_id, recipient_id, issuer_id) = if let Some(ref token_id) = q.token_id {
         match db::get_beacon(&state.db, token_id).await? {
             Some(row) => (row.file_id, row.recipient_id, row.issuer_id),
@@ -99,13 +95,11 @@ pub async fn attribute(
         ));
     };
 
-    // Fetch manifest
     let manifest = match db::get_manifest(&state.db, &file_id).await? {
         Some(row) => serde_json::from_str(&row.manifest_json).ok(),
         None => None,
     };
 
-    // Fetch recent events
     let events = db::get_recent_events(&state.db, &file_id, 50).await?;
     let event_values: Vec<serde_json::Value> = events
         .iter()

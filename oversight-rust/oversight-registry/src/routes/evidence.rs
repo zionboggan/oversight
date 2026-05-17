@@ -1,5 +1,3 @@
-//! GET /evidence/{file_id} - signed provenance bundle for a registered file.
-
 use axum::extract::{Path, State};
 use axum::Json;
 use ed25519_dalek::{Signer, SigningKey};

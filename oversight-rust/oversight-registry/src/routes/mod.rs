@@ -1,5 +1,3 @@
-//! Route modules for the Oversight registry.
-
 pub mod attribute;
 pub mod beacon;
 pub mod dns_event;

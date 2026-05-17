@@ -1,5 +1,3 @@
-//! GET /candidates/semantic - recent L3 semantic mark IDs for scrapers.
-
 use axum::extract::{Query, State};
 use axum::Json;
 use serde::Deserialize;

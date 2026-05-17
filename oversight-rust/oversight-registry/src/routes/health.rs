@@ -1,5 +1,3 @@
-//! GET /health — liveness/readiness probe.
-
 use axum::extract::State;
 use axum::Json;
 use std::sync::Arc;

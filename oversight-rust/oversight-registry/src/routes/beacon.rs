@@ -1,5 +1,3 @@
-//! Beacon callback endpoints: HTTP image, OCSP-style, and license checks.
-
 use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};

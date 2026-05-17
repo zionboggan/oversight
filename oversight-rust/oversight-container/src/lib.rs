@@ -29,11 +29,8 @@ use thiserror::Error;
 pub const MAGIC: [u8; 6] = *b"OSGT\x01\x00";
 pub const SUITE_CLASSIC_V1_ID: u8 = 1;
 pub const SUITE_HYBRID_V1_ID: u8 = 2;
-/// Hardware-backed P-256 ECDH suite for PIV-compatible tokens.
-/// See `docs/HARDWARE_KEYS.md` and `oversight_crypto::SUITE_HW_P256_V1`.
 pub const SUITE_HW_P256_V1_ID: u8 = 3;
 
-// Hard caps to prevent DoS via attacker-controlled length fields.
 pub const MAX_MANIFEST_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_WRAPPED_DEK_BYTES: usize = 1 * 1024 * 1024;
 // 4 GiB on 64-bit; usize::MAX on 32-bit (which is just under 4 GiB anyway).
@@ -223,14 +220,12 @@ impl SealedFile {
 
 // -------------------------- High-level API --------------------------
 
-/// Seal plaintext for a single recipient.
 pub fn seal(
     plaintext: &[u8],
     manifest: &mut Manifest,
     issuer_ed25519_priv: &[u8],
     recipient_x25519_pub: &[u8],
 ) -> Result<Vec<u8>, ContainerError> {
-    // Preconditions as explicit checks (not asserts — python -O safety parity).
     if manifest.content_hash != crypto::content_hash(plaintext) {
         return Err(ContainerError::Precondition(
             "manifest.content_hash != sha256(plaintext)",
@@ -278,7 +273,6 @@ pub fn seal(
     sf.to_bytes()
 }
 
-/// Open a sealed blob. Returns (plaintext, manifest).
 pub fn open_sealed(
     blob: &[u8],
     recipient_x25519_priv: &[u8],
@@ -302,7 +296,6 @@ pub fn open_sealed(
         }
     }
 
-    // Policy enforcement (time-based) — expanded version in oversight-policy crate later
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -325,7 +318,6 @@ pub fn open_sealed(
         }
     }
 
-    // DEK unwrap: try slots if present, else single wrap
     let dek = if let Some(slots) = sf.wrapped_dek.get("slots").and_then(|v| v.as_array()) {
         let mut recovered = None;
         for slot in slots {
@@ -348,20 +340,11 @@ pub fn open_sealed(
         return Err(ContainerError::HashMismatch);
     }
 
-    // Count only successful recipient decryptions. Failed key guesses cannot
-    // burn max_opens, but a policy failure still prevents plaintext release.
     oversight_policy::record_open(&sf.manifest, policy_ctx)?;
 
     Ok((plaintext, sf.manifest))
 }
 
-/// Seal `plaintext` for a hardware-backed P-256 recipient (`OSGT-HW-P256-v1`).
-///
-/// Mirrors [`seal`] but consumes the recipient's P-256 SEC1 uncompressed
-/// public key (65 bytes) instead of an X25519 public key. The manifest's
-/// `suite` field must already be set to `oversight_crypto::SUITE_HW_P256_V1`
-/// and the recipient's `p256_pub` field must hex-match `recipient_p256_sec1_pub`.
-/// All other invariants (content_hash, size_bytes, signature) match [`seal`].
 pub fn seal_hw_p256(
     plaintext: &[u8],
     manifest: &mut Manifest,
@@ -515,7 +498,6 @@ pub fn open_sealed_with_provider(
     Ok((plaintext, sf.manifest))
 }
 
-/// Fail closed until the manifest schema can explicitly bind every recipient.
 pub fn seal_multi(
     plaintext: &[u8],
     manifest: &mut Manifest,
@@ -719,7 +701,6 @@ mod tests {
         )
         .unwrap();
 
-        // Container header must carry the hardware suite id.
         assert_eq!(blob[7], SUITE_HW_P256_V1_ID);
 
         let provider = SoftwareP256KeyProvider::new(recipient);

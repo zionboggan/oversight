@@ -1,5 +1,3 @@
-//! Transparency-log read endpoints for federated verifiers.
-
 use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;

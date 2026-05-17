@@ -1,5 +1,3 @@
-//! GET /.well-known/oversight-registry - registry identity advertisement.
-
 use axum::extract::State;
 use axum::Json;
 use std::sync::Arc;

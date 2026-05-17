@@ -1,11 +1,3 @@
-//! POST /register — store manifest, beacons, watermarks with signature verification.
-//!
-//! Security invariants:
-//!   1. The manifest's Ed25519 signature MUST verify.
-//!   2. Request sidecars must exactly match the signed manifest's copies.
-//!   3. Re-registration of a file_id requires the same issuer pubkey.
-//!   4. All inputs are size-validated before processing.
-
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::Json;
@@ -30,7 +22,6 @@ pub async fn register(
         "operator",
     )?;
 
-    // ---- Input validation ----
     let manifest = &req.manifest;
 
     let file_id = manifest
@@ -55,7 +46,6 @@ pub async fn register(
         )));
     }
 
-    // Validate manifest JSON size
     let manifest_json = serde_json::to_string(manifest)
         .map_err(|e| RegistryError::BadRequest(format!("manifest serialization: {e}")))?;
     if manifest_json.len() > MAX_MANIFEST_JSON_LEN {
@@ -76,7 +66,6 @@ pub async fn register(
         return Err(RegistryError::BadRequest("identifier too long".into()));
     }
 
-    // ---- Signature verification ----
     let (sig_ok, issuer_pub) = verify_manifest_signature(manifest);
     if !sig_ok {
         return Err(RegistryError::BadRequest(
@@ -89,12 +78,10 @@ pub async fn register(
         ));
     }
 
-    // ---- v0.4.4 hardening: validate sidecars match signed manifest ----
     let (signed_beacons, signed_watermarks) =
         validate_signed_artifacts(manifest, &req.beacons, &req.watermarks)
             .map_err(RegistryError::BadRequest)?;
 
-    // ---- Check existing issuer ----
     let existing_pub = db::get_manifest_issuer_pub(&state.db, file_id).await?;
     if let Some(ref existing) = existing_pub {
         if existing != &issuer_pub {
@@ -106,7 +93,6 @@ pub async fn register(
         }
     }
 
-    // ---- Persist ----
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -185,7 +171,6 @@ pub async fn register(
         .await?;
     }
 
-    // Corpus hashes (optional)
     if let Some(ref corpus) = req.corpus {
         if corpus.len() > MAX_CORPUS_ENTRIES {
             return Err(RegistryError::BadRequest(format!(
@@ -202,7 +187,6 @@ pub async fn register(
         }
     }
 
-    // ---- Transparency log ----
     let timestamp_str = crate::timestamp_stub();
     let tlog_event = serde_json::json!({
         "event": "register",
@@ -220,7 +204,6 @@ pub async fn register(
         .map(|idx| idx as i64)
         .unwrap_or(-1);
 
-    // ---- Optional Rekor attestation ----
     let rekor_result = if state.rekor_enabled {
         attest_to_rekor(
             &state,
@@ -251,8 +234,6 @@ pub async fn register(
     }))
 }
 
-/// Sign a registration predicate and submit to a Rekor v2 transparency log.
-/// Non-fatal: returns None on any error so the registry remains usable.
 fn attest_to_rekor(
     state: &AppState,
     file_id: &str,
@@ -325,13 +306,11 @@ fn attest_to_rekor(
     match oversight_rekor::sign_dsse(&statement, &priv_bytes, "") {
         Ok(envelope) => {
             let pub_bytes = hex::decode(&identity.ed25519_pub).ok()?;
-            // Rekor v2 expects DER-encoded SubjectPublicKeyInfo. For Ed25519 this is
-            // a fixed 12-byte prefix + 32-byte raw key.
-            let der_prefix: [u8; 12] = [
+            let ed25519_spki_der_prefix: [u8; 12] = [
                 0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
             ];
             let mut der = Vec::with_capacity(44);
-            der.extend_from_slice(&der_prefix);
+            der.extend_from_slice(&ed25519_spki_der_prefix);
             der.extend_from_slice(&pub_bytes);
 
             match oversight_rekor::upload::upload_dsse(&envelope, &der, &state.rekor_url) {

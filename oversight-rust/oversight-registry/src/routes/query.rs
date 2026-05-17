@@ -1,5 +1,3 @@
-//! GET /query/{file_id} — watermark/beacon ownership lookup by file_id.
-
 use axum::extract::{Path, State};
 use axum::Json;
 use std::sync::Arc;
@@ -17,7 +15,6 @@ pub async fn query_file(
         return Err(RegistryError::BadRequest("file_id too long".into()));
     }
 
-    // Check manifest exists
     let manifest_row = db::get_manifest(&state.db, &file_id).await?;
     if manifest_row.is_none() {
         return Ok(Json(QueryResponse {
@@ -31,7 +28,6 @@ pub async fn query_file(
     }
     let manifest_row = manifest_row.unwrap();
 
-    // Fetch watermarks and beacons for this file
     let watermarks = db::get_watermarks_by_file(&state.db, &file_id).await?;
     let beacons = db::get_beacons_by_file(&state.db, &file_id).await?;
 

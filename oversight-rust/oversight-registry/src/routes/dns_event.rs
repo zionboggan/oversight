@@ -1,5 +1,3 @@
-//! POST /dns_event — authenticated beacon callback logging from the DNS server.
-
 use axum::extract::{ConnectInfo, State};
 use axum::http::HeaderMap;
 use axum::Json;
@@ -21,7 +19,6 @@ pub async fn dns_event(
 ) -> Result<Json<DnsEventResponse>> {
     verify_dns_event_auth(&state, &headers, &addr)?;
 
-    // Validate input sizes
     if evt.token_id.is_empty() || evt.token_id.len() > MAX_ID_LEN {
         return Err(RegistryError::BadRequest("invalid token_id".into()));
     }
@@ -35,13 +32,11 @@ pub async fn dns_event(
         return Err(RegistryError::BadRequest("dns event field too long".into()));
     }
 
-    // Look up beacon ownership
     let beacon = db::get_beacon(&state.db, &evt.token_id).await?;
     let file_id = beacon.as_ref().map(|b| b.file_id.as_str());
     let recipient_id = beacon.as_ref().map(|b| b.recipient_id.as_str());
     let issuer_id = beacon.as_ref().map(|b| b.issuer_id.as_str());
 
-    // Append to transparency log
     let timestamp_str = crate::timestamp_stub();
     let tlog_event = serde_json::json!({
         "event": "beacon",
@@ -60,7 +55,6 @@ pub async fn dns_event(
         .map(|idx| idx as i64)
         .unwrap_or(-1);
 
-    // Record event in DB
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

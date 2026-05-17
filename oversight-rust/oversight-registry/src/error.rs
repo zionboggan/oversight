@@ -1,5 +1,3 @@
-//! Unified error types and Axum error responses for the registry.
-
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -45,7 +43,6 @@ impl IntoResponse for RegistryError {
             RegistryError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 
-        // Log server-side errors at error level; client errors at debug.
         match status.as_u16() {
             400..=499 => tracing::debug!(%status, %message, "client error"),
             _ => tracing::error!(%status, %message, "server error"),

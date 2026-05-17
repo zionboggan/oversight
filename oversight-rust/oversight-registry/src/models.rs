@@ -1,21 +1,10 @@
-//! Request/response types and database row types for the registry.
-
 use serde::{Deserialize, Serialize};
 
-// ---- Input size limits (reject oversized payloads) ----------------------
-
-/// Maximum length of a file_id, token_id, mark_id, or similar identifier.
 pub const MAX_ID_LEN: usize = 256;
-/// Maximum length of a canonical manifest JSON blob.
 pub const MAX_MANIFEST_JSON_LEN: usize = 256 * 1024; // 256 KiB
-/// Maximum number of beacons in a single registration.
 pub const MAX_BEACONS: usize = 500;
-/// Maximum number of watermarks in a single registration.
 pub const MAX_WATERMARKS: usize = 500;
-/// Maximum number of corpus hash entries in a single registration.
 pub const MAX_CORPUS_ENTRIES: usize = 64;
-
-// ---- Request types ------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrationRequest {
@@ -47,8 +36,6 @@ pub struct DnsEventRequest {
 pub struct QueryParams {
     pub file_id: String,
 }
-
-// ---- Response types -----------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrationResponse {
@@ -103,8 +90,6 @@ pub struct QueryResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub beacons: Option<Vec<BeaconRow>>,
 }
-
-// ---- DB row types -------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct BeaconRow {

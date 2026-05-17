@@ -1,15 +1,8 @@
-//! Ed25519 signature verification for /register.
-//!
-//! Uses the workspace `oversight-manifest` crate to parse and verify manifests
-//! in canonical JSON form. The issuer's Ed25519 public key is embedded in the
-//! manifest itself — verification proves the issuer signed the exact bytes.
-
 use axum::http::{header, HeaderMap};
 use oversight_manifest::Manifest;
 
 use crate::error::{RegistryError, Result as RegistryResult};
 
-/// Extract a token from either `Authorization: Bearer ...` or a named header.
 pub fn bearer_or_header_token(headers: &HeaderMap, header_name: &'static str) -> Option<String> {
     if let Some(auth) = headers
         .get(header::AUTHORIZATION)
@@ -31,7 +24,6 @@ pub fn bearer_or_header_token(headers: &HeaderMap, header_name: &'static str) ->
         .map(str::to_string)
 }
 
-/// Require an optional deployment token. Empty config preserves local/dev mode.
 pub fn require_optional_token(
     configured_token: Option<&str>,
     headers: &HeaderMap,
@@ -68,14 +60,7 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-/// Parse a manifest JSON value, canonicalize it, and verify the embedded
-/// Ed25519 signature.
-///
-/// Returns `(signature_valid, issuer_ed25519_pub_hex)`.
-/// If parsing fails, returns `(false, "")`.
 pub fn verify_manifest_signature(manifest_value: &serde_json::Value) -> (bool, String) {
-    // Serialize to canonical JSON bytes (sorted keys, no whitespace) the same
-    // way the Python server does: json.dumps(m, sort_keys=True, separators=(",",":"))
     let canonical = match serde_jcs::to_vec(manifest_value) {
         Ok(b) => b,
         Err(_) => return (false, String::new()),
@@ -94,12 +79,6 @@ pub fn verify_manifest_signature(manifest_value: &serde_json::Value) -> (bool, S
     }
 }
 
-/// Normalize a list of sidecar items (beacons or watermarks) to sorted
-/// canonical JSON strings for exact comparison against the signed manifest.
-///
-/// This mirrors the Python `_canonical_items()` function that sorts the
-/// JSON-serialized forms to detect any mismatch between the request sidecars
-/// and the manifest's signed copies.
 pub fn canonical_items(items: &[serde_json::Value]) -> Vec<String> {
     let mut result: Vec<String> = items
         .iter()
@@ -109,12 +88,6 @@ pub fn canonical_items(items: &[serde_json::Value]) -> Vec<String> {
     result
 }
 
-/// Validate that the request beacons/watermarks exactly match the signed
-/// manifest's beacons/watermarks. Returns the signed copies on success.
-///
-/// This is the v0.4.4 hardening check: the registry uses the manifest's
-/// embedded copies as the source of truth. If the request sidecars differ
-/// from what was signed, the registration is rejected.
 pub fn validate_signed_artifacts(
     manifest_value: &serde_json::Value,
     req_beacons: &[serde_json::Value],
@@ -152,7 +125,6 @@ mod tests {
     fn canonical_items_sorts_deterministically() {
         let a = serde_json::json!({"z": 1, "a": 2});
         let b = serde_json::json!({"a": 2, "z": 1});
-        // Same logical object, different key order: canonical form should match.
         let ca = canonical_items(&[a]);
         let cb = canonical_items(&[b]);
         assert_eq!(ca, cb);
