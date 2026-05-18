@@ -39,6 +39,11 @@
 - **Source comment guard.** Added `scripts/check_source_comments.py`, a pytest
   wrapper, and a `source-style` GitHub Actions workflow so strict comment-light
   paths fail CI if prose comments are reintroduced.
+- **Rust PDF extraction parity.** `oversight-formats` now uses lopdf page text
+  extraction plus parsed content-stream operations for PDF fingerprint text
+  instead of raw literal scanning. The fallback handles `Tj`, `TJ`, quote
+  operators, and array spacing, with new Rust tests covering page-level PDF
+  text extraction.
 
 ## v0.4.11 - 2026-05-08 Hardware-keys completion: Python parity, browser support, end-to-end seal
 

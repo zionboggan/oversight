@@ -326,7 +326,8 @@ These items are included in v0.4.4/v0.4.5 and current `main`:
 - Rust registry and format-adapter paths now mirror the Python hardening:
   authenticated DNS beacon callbacks, no silent signed-artifact drops,
   digest-checked Rekor offline verification, fail-closed Rust `max_opens`,
-  DOCX keyword insertion, and PDF action screening.
+  DOCX keyword insertion, PDF action screening, and parsed PDF text
+  extraction for fingerprinting.
 - L3 semantic watermarking is opt-in for sensitive classes, requires
   disclosure acknowledgement when enabled, and records `canonical_content_hash`.
 - `.sealed` parsing rejects suite-byte tamper, malformed manifest or wrapped-DEK
@@ -420,7 +421,7 @@ project does not backport fixes below the current stable line.
 | Python pytest suite | 10 | green |
 | Rust oversight-container | 17 | green |
 | Rust oversight-crypto | 21 | green |
-| Rust oversight-formats | 35 | green |
+| Rust oversight-formats | 37 | green |
 | Rust oversight-manifest | 3 | green |
 | Rust oversight-policy | 7 | green |
 | Rust oversight-registry | 8 | green |
@@ -429,7 +430,7 @@ project does not backport fixes below the current stable line.
 | Rust oversight-tlog | 7 | green |
 | Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 120 | all green |
+| Total automated Rust unit tests | 122 | all green |
 
 ## Design principles (what Oversight never does)
 

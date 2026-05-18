@@ -72,7 +72,10 @@ The seal, open, manifest, policy, semantic, tlog, and rekor path is
 implemented as a Rust workspace under `oversight-rust/`. `cargo build
 --workspace --release` passes with zero warnings. Python is the reference
 implementation; Rust is canonical for production deployments. A conformance
-suite proves bit-identical output for every manifest and envelope.
+suite proves bit-identical output for every manifest and envelope. Format
+adapter parity is being closed in bounded slices; current `main` has parsed
+PDF page/content-stream text extraction for fingerprinting instead of raw
+literal scanning.
 
 ### Fail-closed security hardening — v0.4.4
 

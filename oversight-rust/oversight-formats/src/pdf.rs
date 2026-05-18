@@ -23,7 +23,8 @@
 //! might inject unwanted objects).
 
 use crate::{FormatAdapter, FormatError, WatermarkCandidate};
-use lopdf::{Dictionary, Document, Object, StringFormat};
+use lopdf::content::{Content, Operation};
+use lopdf::{decode_text_string, Dictionary, Document, Object, StringFormat};
 
 /// PDF `/Info` dictionary key for the oversight mark_id.
 const METADATA_KEY: &str = "OversightMark";
@@ -172,34 +173,28 @@ pub fn extract_pdf_metadata(pdf_bytes: &[u8]) -> Result<PdfOversightMeta, Format
     Ok(meta)
 }
 
-/// Extract all text content from the PDF for fingerprinting and downstream
-/// L1/L2/L3 watermark recovery.
-///
-/// TODO: Implement full text extraction using lopdf's content stream parsing.
-/// For now, this extracts raw string objects from the PDF which captures
-/// most text but may miss some layout-dependent content.
 pub fn extract_text_for_fingerprint(pdf_bytes: &[u8]) -> Result<String, FormatError> {
     let doc = Document::load_mem(pdf_bytes)
         .map_err(|e| FormatError::Malformed(format!("PDF parse error: {}", e)))?;
 
-    let mut text_parts: Vec<String> = Vec::new();
-
-    // Iterate all pages and extract text from content streams
-    for page_id in doc.page_iter() {
-        if let Ok(content) = doc.get_page_content(page_id) {
-            // The content stream is raw bytes; extract text between Tj/TJ operators
-            // This is a simplified extraction -- full implementation would parse
-            // the content stream operators properly.
-            if let Ok(text) = String::from_utf8(content.clone()) {
-                // Extract strings from Tj and TJ operators (simplified)
-                for part in extract_text_from_content_stream(&text) {
-                    text_parts.push(part);
-                }
+    let page_numbers: Vec<u32> = doc.get_pages().keys().copied().collect();
+    if !page_numbers.is_empty() {
+        if let Ok(text) = doc.extract_text(&page_numbers) {
+            let normalized = normalize_pdf_text_parts(text.lines().map(str::to_owned));
+            if !normalized.is_empty() {
+                return Ok(normalized);
             }
         }
     }
 
-    Ok(text_parts.join("\n"))
+    let mut text_parts: Vec<String> = Vec::new();
+    for page_id in doc.page_iter() {
+        if let Ok(content) = doc.get_page_content(page_id) {
+            text_parts.extend(extract_text_from_content_stream(&content));
+        }
+    }
+
+    Ok(normalize_pdf_text_parts(text_parts))
 }
 
 // ---------------------------------------------------------------------------
@@ -298,20 +293,88 @@ fn get_string_from_dict(dict: &Dictionary, key: &str) -> Option<String> {
     })
 }
 
-/// Simplified text extraction from a PDF content stream.
-///
-/// Looks for `(text) Tj` and `[(text)] TJ` patterns. This is a best-effort
-/// extraction; a complete implementation would use a proper PDF content
-/// stream parser.
-///
-/// TODO: Replace with a proper content stream parser for production use.
-fn extract_text_from_content_stream(content: &str) -> Vec<String> {
+fn extract_text_from_content_stream(content: &[u8]) -> Vec<String> {
+    if let Ok(parsed) = Content::decode(content) {
+        return extract_text_from_operations(&parsed.operations);
+    }
+    extract_text_from_literal_bytes(content)
+}
+
+fn extract_text_from_operations(operations: &[Operation]) -> Vec<String> {
+    let mut parts = Vec::new();
+    for operation in operations {
+        match operation.operator.as_str() {
+            "Tj" | "'" => {
+                if let Some(text) = operation.operands.first().and_then(object_text) {
+                    push_pdf_text(&mut parts, text);
+                }
+            }
+            "\"" => {
+                if let Some(text) = operation.operands.last().and_then(object_text) {
+                    push_pdf_text(&mut parts, text);
+                }
+            }
+            "TJ" => {
+                if let Some(Object::Array(items)) = operation.operands.first() {
+                    push_pdf_text(&mut parts, text_from_array(items));
+                }
+            }
+            _ => {}
+        }
+    }
+    parts
+}
+
+fn object_text(obj: &Object) -> Option<String> {
+    match obj {
+        Object::String(_, _) => decode_text_string(obj).ok(),
+        _ => None,
+    }
+}
+
+fn text_from_array(items: &[Object]) -> String {
+    let mut text = String::new();
+    for item in items {
+        match item {
+            Object::String(_, _) => {
+                if let Some(part) = object_text(item) {
+                    text.push_str(&part);
+                }
+            }
+            Object::Integer(value) if *value < -100 => text.push(' '),
+            Object::Real(value) if *value < -100.0 => text.push(' '),
+            _ => {}
+        }
+    }
+    text
+}
+
+fn push_pdf_text(parts: &mut Vec<String>, text: String) {
+    let trimmed = text.trim();
+    if !trimmed.is_empty() {
+        parts.push(trimmed.to_owned());
+    }
+}
+
+fn normalize_pdf_text_parts<I>(parts: I) -> String
+where
+    I: IntoIterator<Item = String>,
+{
+    parts
+        .into_iter()
+        .map(|part| part.trim().to_owned())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn extract_text_from_literal_bytes(content: &[u8]) -> Vec<String> {
     let mut parts = Vec::new();
     let mut i = 0;
-    let chars: Vec<char> = content.chars().collect();
+    let lossy = String::from_utf8_lossy(content);
+    let chars: Vec<char> = lossy.chars().collect();
     while i < chars.len() {
         if chars[i] == '(' {
-            // Find matching closing paren (handle nesting)
             let mut depth = 1;
             let mut j = i + 1;
             while j < chars.len() && depth > 0 {
@@ -341,6 +404,7 @@ fn extract_text_from_content_stream(content: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lopdf::{dictionary, Stream};
 
     #[test]
     fn pdf_adapter_can_handle() {
@@ -387,7 +451,103 @@ mod tests {
         assert!(security_check(&doc).is_err());
     }
 
-    // Note: Full embed/extract round-trip tests require a valid PDF file.
-    // These are integration tests that should be run with test fixtures.
-    // The unit tests above verify the adapter's detection and sanitization logic.
+    #[test]
+    fn extract_text_from_content_stream_parses_pdf_text_ops() {
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tj", vec![Object::string_literal("Hello")]),
+                Operation::new(
+                    "TJ",
+                    vec![Object::Array(vec![
+                        Object::string_literal("Rust"),
+                        Object::Integer(-120),
+                        Object::string_literal("Port"),
+                    ])],
+                ),
+                Operation::new("'", vec![Object::string_literal("Next line")]),
+                Operation::new(
+                    "\"",
+                    vec![
+                        Object::Integer(0),
+                        Object::Integer(0),
+                        Object::string_literal("Quoted op"),
+                    ],
+                ),
+                Operation::new("ET", vec![]),
+            ],
+        };
+        let encoded = content.encode().unwrap();
+        let parts = extract_text_from_content_stream(&encoded);
+        assert_eq!(parts, vec!["Hello", "Rust Port", "Next line", "Quoted op"]);
+    }
+
+    #[test]
+    fn extract_text_for_fingerprint_reads_page_text() {
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), Object::Integer(12)]),
+                Operation::new("Td", vec![Object::Integer(72), Object::Integer(720)]),
+                Operation::new("Tj", vec![Object::string_literal("Oversight Rust")]),
+                Operation::new(
+                    "TJ",
+                    vec![Object::Array(vec![
+                        Object::string_literal("PDF"),
+                        Object::Integer(-120),
+                        Object::string_literal("Extraction"),
+                    ])],
+                ),
+                Operation::new("ET", vec![]),
+            ],
+        };
+        let pdf = minimal_pdf(content);
+        let text = extract_text_for_fingerprint(&pdf).unwrap();
+        assert!(text.contains("Oversight Rust"));
+        assert!(text.contains("PDF Extraction"));
+    }
+
+    fn minimal_pdf(content: Content<Vec<Operation>>) -> Vec<u8> {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let font_id = doc.add_object(dictionary! {
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Helvetica",
+        });
+        let resources_id = doc.add_object(dictionary! {
+            "Font" => dictionary! {
+                "F1" => font_id,
+            },
+        });
+        let content_id = doc.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+                "Resources" => resources_id,
+                "MediaBox" => vec![
+                    Object::Integer(0),
+                    Object::Integer(0),
+                    Object::Integer(595),
+                    Object::Integer(842),
+                ],
+            }),
+        );
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+        doc.trailer.set("Root", catalog_id);
+        let mut output = Vec::new();
+        doc.save_to(&mut output).unwrap();
+        output
+    }
 }
