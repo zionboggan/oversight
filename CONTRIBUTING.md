@@ -16,3 +16,6 @@ code first.
   sentences and implementation diary notes.
 
 Public documentation belongs in `docs/`, not in source-file commentary.
+
+The strictest paths are enforced by `scripts/check_source_comments.py`; run it
+before pushing changes in the Rust registry.

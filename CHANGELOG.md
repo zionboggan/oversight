@@ -36,6 +36,9 @@
 - **Code comment style.** Added `CONTRIBUTING.md` guidance to prefer
   self-explanatory code and tests over prose-style inline comments, then
   removed noisy implementation comments from the Rust registry path.
+- **Source comment guard.** Added `scripts/check_source_comments.py`, a pytest
+  wrapper, and a `source-style` GitHub Actions workflow so strict comment-light
+  paths fail CI if prose comments are reintroduced.
 
 ## v0.4.11 - 2026-05-08 Hardware-keys completion: Python parity, browser support, end-to-end seal
 
