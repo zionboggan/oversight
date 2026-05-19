@@ -10,9 +10,9 @@
 //! ## Adapters
 //!
 //! - **text** -- L1 zero-width + L2 whitespace + L3 semantic (fully functional)
-//! - **pdf** -- PDF metadata injection via `lopdf` (scaffold)
-//! - **docx** -- Office OOXML core properties via `zip` + `quick-xml` (scaffold)
-//! - **image** -- LSB embedding in Y channel (scaffold)
+//! - **pdf** -- PDF metadata injection and parsed text extraction via `lopdf`
+//! - **docx** -- Office OOXML core properties via `zip` + `quick-xml`
+//! - **image** -- DCT mid-band watermarking plus blind LSB recovery
 //!
 //! ## Usage
 //!

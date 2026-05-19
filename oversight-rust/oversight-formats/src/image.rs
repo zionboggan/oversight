@@ -1,63 +1,19 @@
 //! # Image format adapter
 //!
-//! LSB (Least Significant Bit) embedding in the Y (luma) channel of images.
-//!
-//! ## Algorithm
-//!
-//! The production Python adapter uses DCT-domain frequency watermarking (Cox
-//! et al. spread-spectrum). This Rust adapter uses a simpler LSB approach for
-//! the MVP, which is sufficient for controlled-distribution scenarios where
-//! the image won't be heavily recompressed.
-//!
-//! ### Embed
-//!   1. Decode image to RGB pixels.
-//!   2. Convert each pixel to YCbCr; take the Y (luma) channel.
-//!   3. Generate a deterministic bit sequence from `mark_id` using SHA-256.
-//!   4. For each bit, modify the LSB of the corresponding Y-channel pixel.
-//!   5. Convert back to RGB; encode as PNG (lossless).
-//!
-//! ### Extract
-//!   1. Decode image to RGB; extract Y channel.
-//!   2. Read LSBs from the same pixel positions.
-//!   3. Reconstruct the mark_id from the bit sequence.
-//!
-//! ## Security constraints
-//!
-//! - **Imperceptible**: LSB modification changes pixel values by at most 1
-//!   in the luma channel. This is invisible to the human eye (below the
-//!   just-noticeable difference threshold of ~2-3 levels for 8-bit luma).
-//! - **No executable content**: The adapter only modifies pixel data. No
-//!   metadata, EXIF, ICC profiles, or ancillary chunks are injected.
-//!
-//! ## Survivability
-//!
-//! LSB embedding survives:
-//!   - Format conversion (PNG <-> lossless formats)
-//!   - Metadata stripping
-//!
-//! LSB embedding does NOT survive:
-//!   - JPEG recompression (lossy)
-//!   - Resizing / cropping
-//!   - Any pixel-level transformation
-//!
-//! For JPEG-robust watermarking, use the DCT-domain approach from the Python
-//! adapter (requires `rustdct` or `realfft` crates -- roadmap item).
-//!
-//! ## TODO (v0.7 roadmap)
-//!
-//! - [ ] Port the full Cox et al. DCT spread-spectrum watermark from Python
-//! - [ ] Add perceptual hashing (pHash) for fuzzy leak-match
-//! - [ ] Support JPEG output with quality parameter
-//! - [ ] Add robustness testing against recompression
+//! DCT-domain image watermarking with blind LSB recovery support.
 
 use crate::{FormatAdapter, FormatError, WatermarkCandidate};
-use image::{DynamicImage, GenericImageView, ImageFormat, Pixel};
+use image::{DynamicImage, GenericImageView, ImageFormat, Pixel, RgbImage};
+use rustdct::DctPlanner;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::io::Cursor;
 
 /// Default mark_id length in bytes for extraction.
 const MARK_LEN: usize = 8;
+const DEFAULT_DCT_ALPHA: f64 = 0.10;
+const DEFAULT_DCT_COEFFS: usize = 1500;
+const DEFAULT_DCT_THRESHOLD: f64 = 0.05;
 
 /// Magic header prepended to the embedded bitstream for reliable extraction.
 /// Without a header, extraction from an unmarked image would produce garbage
@@ -97,9 +53,8 @@ impl FormatAdapter for ImageAdapter {
     }
 
     fn embed_watermark(&self, data: &[u8], mark_id: &[u8]) -> Result<Vec<u8>, FormatError> {
-        // Use blind-extract variant so extract_watermark works without
-        // knowing the mark_id in advance.
-        embed_lsb_blind(data, mark_id)
+        let dct_marked = embed_dct(data, mark_id)?;
+        embed_lsb_blind(&dct_marked, mark_id)
     }
 
     fn extract_watermark(&self, data: &[u8]) -> Result<Vec<WatermarkCandidate>, FormatError> {
@@ -135,6 +90,238 @@ impl FormatAdapter for ImageAdapter {
 fn load_image(data: &[u8]) -> Result<DynamicImage, FormatError> {
     image::load_from_memory(data)
         .map_err(|e| FormatError::Malformed(format!("image decode error: {}", e)))
+}
+
+pub fn embed_dct(image_bytes: &[u8], mark_id: &[u8]) -> Result<Vec<u8>, FormatError> {
+    embed_dct_with_params(image_bytes, mark_id, DEFAULT_DCT_ALPHA, DEFAULT_DCT_COEFFS)
+}
+
+pub fn verify_dct(
+    image_bytes: &[u8],
+    candidate_mark_id: &[u8],
+) -> Result<(bool, f64), FormatError> {
+    verify_dct_with_params(
+        image_bytes,
+        candidate_mark_id,
+        DEFAULT_DCT_THRESHOLD,
+        DEFAULT_DCT_COEFFS,
+    )
+}
+
+pub fn embed_dct_with_params(
+    image_bytes: &[u8],
+    mark_id: &[u8],
+    alpha: f64,
+    n_coeffs: usize,
+) -> Result<Vec<u8>, FormatError> {
+    if mark_id.is_empty() {
+        return Err(FormatError::EmbedFailed("mark_id cannot be empty".into()));
+    }
+    let img = load_image(image_bytes)?;
+    let mut planes = image_to_ycbcr(&img);
+    let coords = pick_midband_indices(planes.width, planes.height, n_coeffs);
+    if coords.is_empty() {
+        return Err(FormatError::EmbedFailed(
+            "image too small for DCT watermark".into(),
+        ));
+    }
+
+    dct2_2d(&mut planes.y, planes.width as usize, planes.height as usize);
+    let sequence = mark_to_sequence(mark_id, coords.len());
+    let width = planes.width as usize;
+    for ((row, col), bit) in coords.iter().zip(sequence.iter()) {
+        let idx = row * width + col;
+        let mag = planes.y[idx].abs();
+        planes.y[idx] += alpha * mag * bit;
+    }
+    idct2_2d(&mut planes.y, planes.width as usize, planes.height as usize);
+
+    let rgb = ycbcr_to_rgb_image(&planes);
+    let mut output = Cursor::new(Vec::new());
+    DynamicImage::ImageRgb8(rgb)
+        .write_to(&mut output, ImageFormat::Png)
+        .map_err(|e| FormatError::EmbedFailed(format!("PNG encode error: {}", e)))?;
+    Ok(output.into_inner())
+}
+
+pub fn verify_dct_with_params(
+    image_bytes: &[u8],
+    candidate_mark_id: &[u8],
+    threshold: f64,
+    n_coeffs: usize,
+) -> Result<(bool, f64), FormatError> {
+    if candidate_mark_id.is_empty() {
+        return Ok((false, 0.0));
+    }
+    let img = load_image(image_bytes)?;
+    let mut planes = image_to_ycbcr(&img);
+    let coords = pick_midband_indices(planes.width, planes.height, n_coeffs);
+    if coords.is_empty() {
+        return Ok((false, 0.0));
+    }
+
+    dct2_2d(&mut planes.y, planes.width as usize, planes.height as usize);
+    let sequence = mark_to_sequence(candidate_mark_id, coords.len());
+    let width = planes.width as usize;
+    let mut numerator = 0.0;
+    let mut denominator = 0.0;
+    for ((row, col), expected) in coords.iter().zip(sequence.iter()) {
+        let val = planes.y[row * width + col];
+        numerator += val * expected;
+        denominator += val.abs();
+    }
+    let score = numerator / (denominator + 1e-9);
+    Ok((score > 0.0 && score.abs() >= threshold, score))
+}
+
+struct YCbCrPlanes {
+    width: u32,
+    height: u32,
+    y: Vec<f64>,
+    cb: Vec<f64>,
+    cr: Vec<f64>,
+}
+
+fn image_to_ycbcr(img: &DynamicImage) -> YCbCrPlanes {
+    let rgb = img.to_rgb8();
+    let (width, height) = rgb.dimensions();
+    let len = (width as usize) * (height as usize);
+    let mut y = Vec::with_capacity(len);
+    let mut cb = Vec::with_capacity(len);
+    let mut cr = Vec::with_capacity(len);
+    for pixel in rgb.pixels() {
+        let [r, g, b] = pixel.0;
+        let (yy, cc_b, cc_r) = rgb_to_ycbcr(r, g, b);
+        y.push(yy);
+        cb.push(cc_b);
+        cr.push(cc_r);
+    }
+    YCbCrPlanes {
+        width,
+        height,
+        y,
+        cb,
+        cr,
+    }
+}
+
+fn ycbcr_to_rgb_image(planes: &YCbCrPlanes) -> RgbImage {
+    RgbImage::from_fn(planes.width, planes.height, |x, y| {
+        let idx = (y as usize) * (planes.width as usize) + (x as usize);
+        let (r, g, b) = ycbcr_to_rgb(planes.y[idx], planes.cb[idx], planes.cr[idx]);
+        image::Rgb([r, g, b])
+    })
+}
+
+fn rgb_to_ycbcr(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    let r = r as f64;
+    let g = g as f64;
+    let b = b as f64;
+    (
+        0.299 * r + 0.587 * g + 0.114 * b,
+        128.0 - 0.168_736 * r - 0.331_264 * g + 0.5 * b,
+        128.0 + 0.5 * r - 0.418_688 * g - 0.081_312 * b,
+    )
+}
+
+fn ycbcr_to_rgb(y: f64, cb: f64, cr: f64) -> (u8, u8, u8) {
+    let cb = cb - 128.0;
+    let cr = cr - 128.0;
+    (
+        clamp_u8(y + 1.402 * cr),
+        clamp_u8(y - 0.344_136 * cb - 0.714_136 * cr),
+        clamp_u8(y + 1.772 * cb),
+    )
+}
+
+fn clamp_u8(v: f64) -> u8 {
+    v.round().clamp(0.0, 255.0) as u8
+}
+
+fn dct2_2d(data: &mut [f64], width: usize, height: usize) {
+    let mut planner = DctPlanner::new();
+    let row_dct = planner.plan_dct2(width);
+    let col_dct = planner.plan_dct2(height);
+    let mut row_scratch = vec![0.0; row_dct.get_scratch_len()];
+    for row in data.chunks_mut(width) {
+        row_dct.process_dct2_with_scratch(row, &mut row_scratch);
+    }
+    let mut column = vec![0.0; height];
+    let mut col_scratch = vec![0.0; col_dct.get_scratch_len()];
+    for x in 0..width {
+        for y in 0..height {
+            column[y] = data[y * width + x];
+        }
+        col_dct.process_dct2_with_scratch(&mut column, &mut col_scratch);
+        for y in 0..height {
+            data[y * width + x] = column[y];
+        }
+    }
+}
+
+fn idct2_2d(data: &mut [f64], width: usize, height: usize) {
+    let mut planner = DctPlanner::new();
+    let col_dct = planner.plan_dct3(height);
+    let row_dct = planner.plan_dct3(width);
+    let mut column = vec![0.0; height];
+    let mut col_scratch = vec![0.0; col_dct.get_scratch_len()];
+    for x in 0..width {
+        for y in 0..height {
+            column[y] = data[y * width + x];
+        }
+        col_dct.process_dct3_with_scratch(&mut column, &mut col_scratch);
+        for y in 0..height {
+            data[y * width + x] = column[y];
+        }
+    }
+    let mut row_scratch = vec![0.0; row_dct.get_scratch_len()];
+    for row in data.chunks_mut(width) {
+        row_dct.process_dct3_with_scratch(row, &mut row_scratch);
+    }
+    let scale = 4.0 / ((width as f64) * (height as f64));
+    for value in data {
+        *value *= scale;
+    }
+}
+
+fn pick_midband_indices(width: u32, height: u32, n: usize) -> Vec<(usize, usize)> {
+    let limit = width.min(height) as usize;
+    let lo = ((limit as f64) * 0.10) as usize;
+    let hi = ((limit as f64) * 0.40) as usize;
+    let mut coords = Vec::new();
+    for row in 0..height as usize {
+        for col in 0..width as usize {
+            let diagonal = row + col;
+            if diagonal >= lo && diagonal <= hi {
+                coords.push((row, col));
+                if coords.len() >= n {
+                    return coords;
+                }
+            }
+        }
+    }
+    coords
+}
+
+fn mark_to_sequence(mark_id: &[u8], length: usize) -> Vec<f64> {
+    let mut out = Vec::with_capacity(length);
+    let mut counter: u32 = 0;
+    while out.len() < length {
+        let mut h = Sha256::new();
+        h.update(mark_id);
+        h.update(counter.to_be_bytes());
+        let digest = h.finalize();
+        for byte in digest {
+            for bit in 0..8 {
+                if out.len() >= length {
+                    break;
+                }
+                out.push(if ((byte >> bit) & 1) == 1 { 1.0 } else { -1.0 });
+            }
+        }
+        counter = counter.wrapping_add(1);
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -467,6 +654,51 @@ mod tests {
     }
 
     #[test]
+    fn dct_mark_sequence_matches_python_fixture() {
+        let seq = mark_to_sequence(&hex::decode("0102030405060708").unwrap(), 16);
+        assert_eq!(
+            seq,
+            vec![
+                1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0,
+                -1.0
+            ]
+        );
+    }
+
+    #[test]
+    fn dct_embed_verify_round_trip() {
+        let png_bytes = gradient_png(128, 128);
+        let mark_id = b"\x01\x02\x03\x04\x05\x06\x07\x08";
+        let marked = embed_dct_with_params(&png_bytes, mark_id, 0.20, 1000).unwrap();
+        let (matched, score) = verify_dct(&marked, mark_id).unwrap();
+        assert!(matched, "expected DCT match, score={}", score);
+
+        let wrong = b"\x08\x07\x06\x05\x04\x03\x02\x01";
+        let (wrong_matched, wrong_score) =
+            verify_dct_with_params(&marked, wrong, 0.08, 1000).unwrap();
+        assert!(
+            !wrong_matched,
+            "wrong mark should not verify, score={}",
+            wrong_score
+        );
+    }
+
+    #[test]
+    fn adapter_image_embed_carries_blind_and_dct_marks() {
+        let adapter = ImageAdapter;
+        let png_bytes = gradient_png(128, 128);
+        let mark_id = b"\xde\xad\xbe\xef\xca\xfe\xba\xbe";
+        let marked = adapter.embed_watermark(&png_bytes, mark_id).unwrap();
+
+        let candidates = adapter.extract_watermark(&marked).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].mark_id, mark_id);
+
+        let (matched, score) = verify_dct_with_params(&marked, mark_id, 0.03, 1000).unwrap();
+        assert!(matched, "expected DCT match, score={}", score);
+    }
+
+    #[test]
     fn y_channel_lsb_flip() {
         // Test that set_y_lsb correctly sets the LSB
         let (r, g, b) = (128, 128, 128);
@@ -562,5 +794,17 @@ mod tests {
             "maximum pixel difference should be <= 1, got {}",
             max_diff
         );
+    }
+
+    fn gradient_png(width: u32, height: u32) -> Vec<u8> {
+        let img = image::RgbaImage::from_fn(width, height, |x, y| {
+            let r = ((x * 3 + y * 5) % 256) as u8;
+            let g = ((x * 7 + y * 11) % 256) as u8;
+            let b = ((x * 13 + y * 17) % 256) as u8;
+            image::Rgba([r, g, b, 255])
+        });
+        let mut buf = Cursor::new(Vec::new());
+        img.write_to(&mut buf, ImageFormat::Png).unwrap();
+        buf.into_inner()
     }
 }

@@ -44,6 +44,11 @@
   instead of raw literal scanning. The fallback handles `Tj`, `TJ`, quote
   operators, and array spacing, with new Rust tests covering page-level PDF
   text extraction.
+- **Rust image DCT parity.** `oversight-formats` now ports the Python image
+  adapter's DCT mid-band spread-spectrum watermarking path using `rustdct`.
+  Image watermarking writes the DCT mark and then preserves blind LSB recovery,
+  with tests for the Python-compatible mark sequence, DCT verification, and
+  adapter round trip.
 
 ## v0.4.11 - 2026-05-08 Hardware-keys completion: Python parity, browser support, end-to-end seal
 

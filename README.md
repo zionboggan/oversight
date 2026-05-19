@@ -222,9 +222,11 @@ a fallback path for older manifests that lack those fields.
 
 **Format watermark round-trip fixes.** `oversight-rust/oversight-formats`
 text embedding now keeps L2 trailing-whitespace marks at physical
-line endings after L1 zero-width insertion, and image LSB embedding
+line endings after L1 zero-width insertion, image LSB embedding
 no longer overwrites earlier payload bits via duplicate pixel
-slots. Workspace test suite is green again.
+slots, and current `main` adds DCT mid-band spread-spectrum image
+watermarking to match the Python reference path. Workspace test suite
+is green again.
 
 ## What's new in v0.4.8
 
@@ -421,7 +423,7 @@ project does not backport fixes below the current stable line.
 | Python pytest suite | 10 | green |
 | Rust oversight-container | 17 | green |
 | Rust oversight-crypto | 21 | green |
-| Rust oversight-formats | 37 | green |
+| Rust oversight-formats | 40 | green |
 | Rust oversight-manifest | 3 | green |
 | Rust oversight-policy | 7 | green |
 | Rust oversight-registry | 8 | green |
@@ -430,7 +432,7 @@ project does not backport fixes below the current stable line.
 | Rust oversight-tlog | 7 | green |
 | Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 122 | all green |
+| Total automated Rust unit tests | 125 | all green |
 
 ## Design principles (what Oversight never does)
 

@@ -43,7 +43,7 @@ verifier and that may change without an embedding-API minor bump.
 |---|---|
 | `oversight-cli` | Desktop CLI binary. Pulls in TTY, file-tree, and Rich-formatted output. Not a library. |
 | `oversight-registry` | Axum + SQLx registry server. Sender-side and operator-side; verifiers do not run a registry. |
-| `oversight-formats` | PDF, DOCX, image-LSB watermark application. Sender-only; pulls in heavy format dependencies that are wrong for a verifier binary's size budget. |
+| `oversight-formats` | PDF, DOCX, image DCT/LSB watermark application. Sender-only; pulls in heavy format dependencies that are wrong for a verifier binary's size budget. |
 | `oversight-semantic` | L3 semantic synonym rotation. Sender-only; the verifier path uses `oversight-watermark` for L1/L2 detection only. |
 
 A verifier-only embedder that finds it needs something from these crates is
