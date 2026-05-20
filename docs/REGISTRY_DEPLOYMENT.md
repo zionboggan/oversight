@@ -124,5 +124,16 @@ oversight-registry \
 The migration copies into the Rust target database after running its schema
 migrations. It preserves `events.id`, `events.tlog_index`, corpus `metadata`,
 and the manifest/beacon/watermark relationships that evidence bundles depend
-on. Keep the Python database as a rollback artifact until live conformance and
-evidence-bundle checks pass against the Rust service.
+on. Validate the copied database before switching traffic:
+
+```bash
+oversight-registry \
+  --db /var/lib/oversight/rust-registry.sqlite \
+  --validate-db
+```
+
+The validation command prints JSON counts plus integrity failures for orphaned
+beacons, watermarks, events, corpus rows, identity mismatches, malformed
+manifest JSON, invalid manifest signatures, and manifest/file ID divergence.
+Keep the Python database as a rollback artifact until validation, live
+conformance, and evidence-bundle checks pass against the Rust service.

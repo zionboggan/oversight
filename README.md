@@ -78,7 +78,14 @@ oversight-registry --db rust-registry.sqlite \
 ```
 
 Remove `--migrate-dry-run` to copy manifests, beacons, watermarks, events, and
-corpus rows into the Rust database.
+corpus rows into the Rust database, then run:
+
+```bash
+oversight-registry --db rust-registry.sqlite --validate-db
+```
+
+The validator reports orphan rows, manifest/signature failures, and identity
+mismatches before an operator treats the migrated Rust database as live.
 
 ## Current main after v0.4.11
 
@@ -86,13 +93,14 @@ corpus rows into the Rust database.
 path now includes the Compose/Caddy `live` profile, `.env.example` operator
 secrets, and shared write-side token enforcement across the Python FastAPI
 and Rust Axum registries. The Rust registry also has Python-to-Rust SQLite
-migration tooling (`--migrate-from`, `--migrate-dry-run`) so operators can
-preflight and copy attribution rows without treating the Python reference as
-a permanent production dependency.
+migration tooling (`--migrate-from`, `--migrate-dry-run`) and a native
+`--validate-db` integrity report so operators can preflight, copy, and verify
+attribution rows without treating the Python reference as a permanent
+production dependency.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
-tests, migration validation against real operator databases, and a final
-wire-format stability declaration before v1.0.
+tests against real operator databases and a final wire-format stability
+declaration before v1.0.
 
 ## Quick start
 
@@ -426,13 +434,13 @@ project does not backport fixes below the current stable line.
 | Rust oversight-formats | 40 | green |
 | Rust oversight-manifest | 3 | green |
 | Rust oversight-policy | 7 | green |
-| Rust oversight-registry | 8 | green |
+| Rust oversight-registry | 10 | green |
 | Rust oversight-rekor | 10 | green |
 | Rust oversight-semantic | 8 | green |
 | Rust oversight-tlog | 7 | green |
 | Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 125 | all green |
+| Total automated Rust unit tests | 127 | all green |
 
 ## Design principles (what Oversight never does)
 

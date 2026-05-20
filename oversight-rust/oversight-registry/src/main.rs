@@ -61,6 +61,12 @@ struct Args {
 
     #[arg(long, help = "Report migration row counts without writing to --db")]
     migrate_dry_run: bool,
+
+    #[arg(
+        long,
+        help = "Validate registry database relationships and signed manifests, print JSON, and exit"
+    )]
+    validate_db: bool,
 }
 
 pub struct AppState {
@@ -375,6 +381,17 @@ async fn main() -> anyhow::Result<()> {
             .await
             .map_err(|e| anyhow::anyhow!("registry migration failed: {e}"))?;
         println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+
+    if args.validate_db {
+        let report = db::validate_registry_integrity(&pool)
+            .await
+            .map_err(|e| anyhow::anyhow!("registry integrity validation failed: {e}"))?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        if !report.ok {
+            return Err(anyhow::anyhow!("registry integrity validation failed"));
+        }
         return Ok(());
     }
 

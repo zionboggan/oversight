@@ -240,8 +240,11 @@ reference for write-side operator-token auth and DNS bridge bearer/header
 auth. As of 2026-05-17, `oversight-registry --migrate-from` can copy the
 Python registry's manifests, beacons, watermarks, events, and corpus rows
 into the Rust SQLite schema, with `--migrate-dry-run` for count-only
-preflight. Remaining work: longer-running deployment tests and a wire-format
-stability declaration before declaring v1.0 ready.
+preflight. As of 2026-05-20, `--validate-db` checks the copied Rust database
+for orphan rows, identity mismatches, malformed manifest JSON, invalid
+manifest signatures, and manifest/file ID divergence. Remaining work:
+longer-running deployment tests and a wire-format stability declaration before
+declaring v1.0 ready.
 
 ---
 
@@ -314,7 +317,7 @@ via VM and retype, hardware-key pull mid-open.
 | 9 | Hybrid PQ decrypt in browser | Shipped (2026-05-03) |
 | 10 | Outlook add-in | Next |
 | 11 | Hardware KeyProvider in Rust | Suite shipped (v0.4.11); PIV provider next |
-| 12 | Rust Axum registry, migration tooling | Migration tooling shipped; deployment burn-in next |
+| 12 | Rust Axum registry, migration tooling | Migration validation shipped; deployment burn-in next |
 | 13 | arXiv preprint, threat-model repo document | Mid-term |
 | 14 | IETF Internet-Draft, CFRG or equivalent BoF | Mid-term |
 | 15 | USENIX Security Cycle 2, Black Hat EU 2026 | Mid-term |

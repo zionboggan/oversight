@@ -24,6 +24,11 @@
   copies the Python reference registry's manifests, beacons, watermarks,
   events, and corpus rows into the Rust SQLite schema while preserving event
   IDs, corpus metadata, and registry evidence relationships.
+- **Rust registry integrity validation.** `oversight-registry --validate-db`
+  now checks migrated Rust registry databases for orphaned attribution rows,
+  identity mismatches, malformed manifest JSON, invalid manifest signatures,
+  and manifest/file ID divergence before operators declare migration burn-in
+  complete.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest
   fixture after the v0.4.11 `Recipient.p256_pub` schema addition so the full
   Rust workspace test suite compiles again.
