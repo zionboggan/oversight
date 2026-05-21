@@ -95,8 +95,8 @@ secrets, and shared write-side token enforcement across the Python FastAPI
 and Rust Axum registries. The Rust registry also has Python-to-Rust SQLite
 migration tooling (`--migrate-from`, `--migrate-dry-run`) and a native
 `--validate-db` integrity report so operators can preflight, copy, and verify
-attribution rows without treating the Python reference as a permanent
-production dependency.
+attribution rows, event metadata, corpus metadata, and tlog indexes without
+treating the Python reference as a permanent production dependency.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
 tests against real operator databases and a final wire-format stability
@@ -420,9 +420,10 @@ a desktop opens the same way on a phone with the same answer.
 The full integration contract, including the seven verifier-safe crates,
 the crates that are explicitly out of scope for downstream embedding, the
 git-plus-tag pin pattern, and the minimum versions for 32-bit mobile
-support, is documented at [`docs/EMBEDDING.md`](docs/EMBEDDING.md). v0.4.8
-is the recommended pin for any new embedder; older tags work but the
-project does not backport fixes below the current stable line.
+support, is documented at [`docs/EMBEDDING.md`](docs/EMBEDDING.md). v0.4.11
+is the recommended pin for any new embedder; v0.4.8 remains the minimum for
+32-bit Android portability, but the project does not backport fixes below the
+current stable line.
 
 ## Test coverage
 

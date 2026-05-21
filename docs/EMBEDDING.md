@@ -122,4 +122,5 @@ to four Android ABIs and one iOS ABI.
 
 - [`oversight-protocol/oversight-mobile`](https://github.com/oversight-protocol/oversight-mobile)
   — Flutter + Rust verifier; embeds the seven verifier-safe crates via
-  `flutter_rust_bridge`. As of mobile `v0.1.12`, pinned to oversight `v0.4.8`.
+  `flutter_rust_bridge`. Mobile `v0.1.13` tagged the `v0.4.9` pin; current
+  mobile `main` pins the same seven crates to oversight `v0.4.11`.

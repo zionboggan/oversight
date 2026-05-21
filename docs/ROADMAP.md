@@ -242,9 +242,10 @@ Python registry's manifests, beacons, watermarks, events, and corpus rows
 into the Rust SQLite schema, with `--migrate-dry-run` for count-only
 preflight. As of 2026-05-20, `--validate-db` checks the copied Rust database
 for orphan rows, identity mismatches, malformed manifest JSON, invalid
-manifest signatures, and manifest/file ID divergence. Remaining work:
-longer-running deployment tests and a wire-format stability declaration before
-declaring v1.0 ready.
+manifest signatures, and manifest/file ID divergence. As of 2026-05-21, that
+validation also covers event/corpus JSON sidecars and tlog index uniqueness.
+Remaining work: longer-running deployment tests and a wire-format stability
+declaration before declaring v1.0 ready.
 
 ---
 

@@ -28,7 +28,8 @@
   now checks migrated Rust registry databases for orphaned attribution rows,
   identity mismatches, malformed manifest JSON, invalid manifest signatures,
   and manifest/file ID divergence before operators declare migration burn-in
-  complete.
+  complete. It also validates event/corpus JSON sidecars and tlog index
+  uniqueness so corrupted migrated evidence cannot look clean.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest
   fixture after the v0.4.11 `Recipient.p256_pub` schema addition so the full
   Rust workspace test suite compiles again.

@@ -38,6 +38,10 @@ pub struct RegistryIntegrityReport {
     pub beacon_identity_mismatches: i64,
     pub watermark_identity_mismatches: i64,
     pub event_identity_mismatches: i64,
+    pub malformed_event_extra_json: i64,
+    pub malformed_corpus_metadata_json: i64,
+    pub duplicate_event_tlog_indexes: i64,
+    pub negative_event_tlog_indexes: i64,
     pub malformed_manifest_json: i64,
     pub invalid_manifest_signatures: i64,
     pub mismatched_manifest_file_ids: i64,
@@ -260,6 +264,36 @@ pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIn
         "SELECT COUNT(*) FROM events e JOIN manifests m ON e.file_id = m.file_id WHERE (e.recipient_id IS NOT NULL AND e.recipient_id != m.recipient_id) OR (e.issuer_id IS NOT NULL AND e.issuer_id != m.issuer_id)",
     )
     .await?;
+    let duplicate_event_tlog_indexes = count_query(
+        pool,
+        "SELECT COALESCE(SUM(cnt - 1), 0) FROM (SELECT COUNT(*) AS cnt FROM events WHERE tlog_index IS NOT NULL GROUP BY tlog_index HAVING COUNT(*) > 1)",
+    )
+    .await?;
+    let negative_event_tlog_indexes = count_query(
+        pool,
+        "SELECT COUNT(*) FROM events WHERE tlog_index IS NOT NULL AND tlog_index < 0",
+    )
+    .await?;
+
+    let event_extra_rows: Vec<String> = sqlx::query_scalar(
+        "SELECT extra FROM events WHERE extra IS NOT NULL AND TRIM(extra) != ''",
+    )
+    .fetch_all(pool)
+    .await?;
+    let malformed_event_extra_json = event_extra_rows
+        .iter()
+        .filter(|extra| serde_json::from_str::<serde_json::Value>(extra).is_err())
+        .count() as i64;
+
+    let corpus_metadata_rows: Vec<String> = sqlx::query_scalar(
+        "SELECT metadata FROM corpus WHERE metadata IS NOT NULL AND TRIM(metadata) != ''",
+    )
+    .fetch_all(pool)
+    .await?;
+    let malformed_corpus_metadata_json = corpus_metadata_rows
+        .iter()
+        .filter(|metadata| serde_json::from_str::<serde_json::Value>(metadata).is_err())
+        .count() as i64;
 
     let mut malformed_manifest_json = 0;
     let mut invalid_manifest_signatures = 0;
@@ -292,6 +326,10 @@ pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIn
         && beacon_identity_mismatches == 0
         && watermark_identity_mismatches == 0
         && event_identity_mismatches == 0
+        && malformed_event_extra_json == 0
+        && malformed_corpus_metadata_json == 0
+        && duplicate_event_tlog_indexes == 0
+        && negative_event_tlog_indexes == 0
         && malformed_manifest_json == 0
         && invalid_manifest_signatures == 0
         && mismatched_manifest_file_ids == 0;
@@ -306,6 +344,10 @@ pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIn
         beacon_identity_mismatches,
         watermark_identity_mismatches,
         event_identity_mismatches,
+        malformed_event_extra_json,
+        malformed_corpus_metadata_json,
+        duplicate_event_tlog_indexes,
+        negative_event_tlog_indexes,
         malformed_manifest_json,
         invalid_manifest_signatures,
         mismatched_manifest_file_ids,
@@ -905,6 +947,10 @@ mod tests {
         assert_eq!(report.counts.beacons, 1);
         assert_eq!(report.malformed_manifest_json, 0);
         assert_eq!(report.invalid_manifest_signatures, 0);
+        assert_eq!(report.malformed_event_extra_json, 0);
+        assert_eq!(report.malformed_corpus_metadata_json, 0);
+        assert_eq!(report.duplicate_event_tlog_indexes, 0);
+        assert_eq!(report.negative_event_tlog_indexes, 0);
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(dir);
@@ -946,10 +992,26 @@ mod tests {
             "dns",
             None,
             None,
-            None,
+            Some("{"),
             21,
             None,
+            Some(-1),
+        )
+        .await
+        .unwrap();
+        insert_event(
+            &pool,
+            "token-1",
+            Some("file-1"),
+            Some("recipient-1"),
+            Some("issuer-1"),
+            "dns",
             None,
+            None,
+            Some(r#"{"ok":true}"#),
+            22,
+            None,
+            Some(7),
         )
         .await
         .unwrap();
@@ -959,7 +1021,7 @@ mod tests {
         .bind("missing-file")
         .bind("perceptual")
         .bind("phash-missing")
-        .bind(None::<String>)
+        .bind("{")
         .bind(21_i64)
         .execute(&pool)
         .await
@@ -972,6 +1034,10 @@ mod tests {
         assert_eq!(report.orphan_events, 1);
         assert_eq!(report.orphan_corpus, 1);
         assert_eq!(report.malformed_manifest_json, 1);
+        assert_eq!(report.malformed_event_extra_json, 1);
+        assert_eq!(report.malformed_corpus_metadata_json, 1);
+        assert_eq!(report.duplicate_event_tlog_indexes, 1);
+        assert_eq!(report.negative_event_tlog_indexes, 1);
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(dir);
