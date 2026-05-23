@@ -89,7 +89,7 @@ async fn record_event(
         .tlog
         .append_event(&tlog_event)
         .map(|idx| idx as i64)
-        .unwrap_or(-1);
+        .map_err(|e| RegistryError::Internal(format!("tlog append failed: {e}")))?;
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

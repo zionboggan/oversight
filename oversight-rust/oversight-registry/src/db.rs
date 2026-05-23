@@ -42,6 +42,9 @@ pub struct RegistryIntegrityReport {
     pub malformed_corpus_metadata_json: i64,
     pub duplicate_event_tlog_indexes: i64,
     pub negative_event_tlog_indexes: i64,
+    pub events_without_tlog_index: i64,
+    pub event_tlog_indexes_out_of_range: i64,
+    pub tlog_size: Option<usize>,
     pub malformed_manifest_json: i64,
     pub invalid_manifest_signatures: i64,
     pub mismatched_manifest_file_ids: i64,
@@ -227,7 +230,10 @@ pub async fn migrate_from_sqlite(
     result
 }
 
-pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIntegrityReport> {
+pub async fn validate_registry_integrity(
+    pool: &SqlitePool,
+    tlog_size: Option<usize>,
+) -> Result<RegistryIntegrityReport> {
     let counts = registry_counts(pool).await?;
     let orphan_beacons = count_query(
         pool,
@@ -274,6 +280,20 @@ pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIn
         "SELECT COUNT(*) FROM events WHERE tlog_index IS NOT NULL AND tlog_index < 0",
     )
     .await?;
+    let events_without_tlog_index =
+        count_query(pool, "SELECT COUNT(*) FROM events WHERE tlog_index IS NULL").await?;
+    let event_tlog_indexes_out_of_range = match tlog_size {
+        Some(size) => {
+            let (count,): (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM events WHERE tlog_index IS NOT NULL AND tlog_index >= ?",
+            )
+            .bind(size as i64)
+            .fetch_one(pool)
+            .await?;
+            count
+        }
+        None => 0,
+    };
 
     let event_extra_rows: Vec<String> = sqlx::query_scalar(
         "SELECT extra FROM events WHERE extra IS NOT NULL AND TRIM(extra) != ''",
@@ -330,6 +350,8 @@ pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIn
         && malformed_corpus_metadata_json == 0
         && duplicate_event_tlog_indexes == 0
         && negative_event_tlog_indexes == 0
+        && events_without_tlog_index == 0
+        && event_tlog_indexes_out_of_range == 0
         && malformed_manifest_json == 0
         && invalid_manifest_signatures == 0
         && mismatched_manifest_file_ids == 0;
@@ -348,6 +370,9 @@ pub async fn validate_registry_integrity(pool: &SqlitePool) -> Result<RegistryIn
         malformed_corpus_metadata_json,
         duplicate_event_tlog_indexes,
         negative_event_tlog_indexes,
+        events_without_tlog_index,
+        event_tlog_indexes_out_of_range,
+        tlog_size,
         malformed_manifest_json,
         invalid_manifest_signatures,
         mismatched_manifest_file_ids,
@@ -941,7 +966,7 @@ mod tests {
         run_migrations(&pool).await.unwrap();
         seed_source(&pool).await;
 
-        let report = validate_registry_integrity(&pool).await.unwrap();
+        let report = validate_registry_integrity(&pool, None).await.unwrap();
         assert!(report.ok);
         assert_eq!(report.counts.manifests, 1);
         assert_eq!(report.counts.beacons, 1);
@@ -951,6 +976,9 @@ mod tests {
         assert_eq!(report.malformed_corpus_metadata_json, 0);
         assert_eq!(report.duplicate_event_tlog_indexes, 0);
         assert_eq!(report.negative_event_tlog_indexes, 0);
+        assert_eq!(report.events_without_tlog_index, 0);
+        assert_eq!(report.event_tlog_indexes_out_of_range, 0);
+        assert_eq!(report.tlog_size, None);
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(dir);
@@ -1015,6 +1043,22 @@ mod tests {
         )
         .await
         .unwrap();
+        insert_event(
+            &pool,
+            "token-no-tlog",
+            Some("file-1"),
+            Some("recipient-1"),
+            Some("issuer-1"),
+            "dns",
+            None,
+            None,
+            Some(r#"{"ok":true}"#),
+            23,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO corpus (file_id, hash_kind, hash_value, metadata, registered_at) VALUES (?, ?, ?, ?, ?)",
         )
@@ -1027,7 +1071,7 @@ mod tests {
         .await
         .unwrap();
 
-        let report = validate_registry_integrity(&pool).await.unwrap();
+        let report = validate_registry_integrity(&pool, Some(1)).await.unwrap();
         assert!(!report.ok);
         assert_eq!(report.orphan_beacons, 1);
         assert_eq!(report.orphan_watermarks, 1);
@@ -1038,6 +1082,9 @@ mod tests {
         assert_eq!(report.malformed_corpus_metadata_json, 1);
         assert_eq!(report.duplicate_event_tlog_indexes, 1);
         assert_eq!(report.negative_event_tlog_indexes, 1);
+        assert_eq!(report.events_without_tlog_index, 1);
+        assert_eq!(report.event_tlog_indexes_out_of_range, 2);
+        assert_eq!(report.tlog_size, Some(1));
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(dir);

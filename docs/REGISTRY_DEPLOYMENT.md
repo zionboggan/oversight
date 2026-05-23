@@ -135,7 +135,8 @@ oversight-registry \
 The validation command prints JSON counts plus integrity failures for orphaned
 beacons, watermarks, events, corpus rows, identity mismatches, malformed
 event `extra` JSON, malformed corpus metadata JSON, duplicate or negative
-tlog indexes, malformed manifest JSON, invalid manifest signatures, and
+tlog indexes, missing event tlog indexes, event tlog indexes outside the
+on-disk tlog size, malformed manifest JSON, invalid manifest signatures, and
 manifest/file ID divergence. Keep the Python database as a rollback artifact
 until validation, live conformance, and evidence-bundle checks pass against
 the Rust service.

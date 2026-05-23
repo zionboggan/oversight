@@ -98,17 +98,7 @@ pub async fn register(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    db::upsert_manifest(
-        &state.db,
-        file_id,
-        recipient_id,
-        issuer_id,
-        &issuer_pub,
-        &manifest_json,
-        now,
-    )
-    .await?;
-
+    let mut beacon_rows = Vec::with_capacity(signed_beacons.len());
     for beacon in &signed_beacons {
         let token_id = beacon
             .get("token_id")
@@ -128,18 +118,10 @@ pub async fn register(
                 "signed beacon has invalid kind".into(),
             ));
         }
-        db::upsert_beacon(
-            &state.db,
-            token_id,
-            file_id,
-            recipient_id,
-            issuer_id,
-            kind,
-            now,
-        )
-        .await?;
+        beacon_rows.push((token_id, kind));
     }
 
+    let mut watermark_rows = Vec::with_capacity(signed_watermarks.len());
     for watermark in &signed_watermarks {
         let mark_id = watermark
             .get("mark_id")
@@ -159,16 +141,7 @@ pub async fn register(
                 "signed watermark has invalid layer".into(),
             ));
         }
-        db::upsert_watermark(
-            &state.db,
-            mark_id,
-            layer,
-            file_id,
-            recipient_id,
-            issuer_id,
-            now,
-        )
-        .await?;
+        watermark_rows.push((mark_id, layer));
     }
 
     if let Some(ref corpus) = req.corpus {
@@ -177,13 +150,6 @@ pub async fn register(
                 "too many corpus entries (max {})",
                 MAX_CORPUS_ENTRIES
             )));
-        }
-        for (hash_kind, hash_value) in corpus {
-            if let Some(hv) = hash_value.as_str() {
-                if !hv.is_empty() && hash_kind.len() <= MAX_ID_LEN && hv.len() <= MAX_ID_LEN {
-                    db::upsert_corpus(&state.db, file_id, hash_kind, hv, now).await?;
-                }
-            }
         }
     }
 
@@ -202,7 +168,54 @@ pub async fn register(
         .tlog
         .append_event(&tlog_event)
         .map(|idx| idx as i64)
-        .unwrap_or(-1);
+        .map_err(|e| RegistryError::Internal(format!("tlog append failed: {e}")))?;
+
+    db::upsert_manifest(
+        &state.db,
+        file_id,
+        recipient_id,
+        issuer_id,
+        &issuer_pub,
+        &manifest_json,
+        now,
+    )
+    .await?;
+
+    for (token_id, kind) in beacon_rows {
+        db::upsert_beacon(
+            &state.db,
+            token_id,
+            file_id,
+            recipient_id,
+            issuer_id,
+            kind,
+            now,
+        )
+        .await?;
+    }
+
+    for (mark_id, layer) in watermark_rows {
+        db::upsert_watermark(
+            &state.db,
+            mark_id,
+            layer,
+            file_id,
+            recipient_id,
+            issuer_id,
+            now,
+        )
+        .await?;
+    }
+
+    if let Some(ref corpus) = req.corpus {
+        for (hash_kind, hash_value) in corpus {
+            if let Some(hv) = hash_value.as_str() {
+                if !hv.is_empty() && hash_kind.len() <= MAX_ID_LEN && hv.len() <= MAX_ID_LEN {
+                    db::upsert_corpus(&state.db, file_id, hash_kind, hv, now).await?;
+                }
+            }
+        }
+    }
 
     let rekor_result = if state.rekor_enabled {
         attest_to_rekor(

@@ -97,6 +97,8 @@ migration tooling (`--migrate-from`, `--migrate-dry-run`) and a native
 `--validate-db` integrity report so operators can preflight, copy, and verify
 attribution rows, event metadata, corpus metadata, and tlog indexes without
 treating the Python reference as a permanent production dependency.
+Rust registry writes now fail closed if the local transparency log cannot
+append, so new evidence rows cannot silently lose their audit trail.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
 tests against real operator databases and a final wire-format stability

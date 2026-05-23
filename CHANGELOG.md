@@ -29,7 +29,10 @@
   identity mismatches, malformed manifest JSON, invalid manifest signatures,
   and manifest/file ID divergence before operators declare migration burn-in
   complete. It also validates event/corpus JSON sidecars and tlog index
-  uniqueness so corrupted migrated evidence cannot look clean.
+  uniqueness so corrupted migrated evidence cannot look clean. Rust registry
+  writes now fail closed if the local transparency log cannot append, and
+  validation checks missing or out-of-range event tlog indexes against the
+  on-disk tlog size.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest
   fixture after the v0.4.11 `Recipient.p256_pub` schema addition so the full
   Rust workspace test suite compiles again.

@@ -244,6 +244,8 @@ preflight. As of 2026-05-20, `--validate-db` checks the copied Rust database
 for orphan rows, identity mismatches, malformed manifest JSON, invalid
 manifest signatures, and manifest/file ID divergence. As of 2026-05-21, that
 validation also covers event/corpus JSON sidecars and tlog index uniqueness.
+As of 2026-05-22, registry writes fail closed when tlog append fails and
+`--validate-db` compares event tlog indexes against the on-disk tlog size.
 Remaining work: longer-running deployment tests and a wire-format stability
 declaration before declaring v1.0 ready.
 
