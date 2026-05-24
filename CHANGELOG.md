@@ -32,7 +32,11 @@
   uniqueness so corrupted migrated evidence cannot look clean. Rust registry
   writes now fail closed if the local transparency log cannot append, and
   validation checks missing or out-of-range event tlog indexes against the
-  on-disk tlog size.
+  on-disk tlog size. Validation also compares event rows to the corresponding
+  tlog leaf payload so an index cannot point at unrelated evidence and still
+  pass burn-in checks.
+- **GitHub Actions runtime hygiene.** Main CI workflows opt into the GitHub
+  Actions Node 24 runtime before the hosted runner default changes.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest
   fixture after the v0.4.11 `Recipient.p256_pub` schema addition so the full
   Rust workspace test suite compiles again.

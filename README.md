@@ -99,6 +99,8 @@ attribution rows, event metadata, corpus metadata, and tlog indexes without
 treating the Python reference as a permanent production dependency.
 Rust registry writes now fail closed if the local transparency log cannot
 append, so new evidence rows cannot silently lose their audit trail.
+The validator also checks that event rows point at matching tlog leaf payloads,
+not just in-range indexes.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
 tests against real operator databases and a final wire-format stability

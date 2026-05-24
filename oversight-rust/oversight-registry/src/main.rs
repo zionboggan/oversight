@@ -387,7 +387,7 @@ async fn main() -> anyhow::Result<()> {
     if args.validate_db {
         let tlog = TransparencyLog::open(data_dir.join("tlog"))
             .map_err(|e| anyhow::anyhow!("tlog validation init: {e}"))?;
-        let report = db::validate_registry_integrity(&pool, Some(tlog.size()))
+        let report = db::validate_registry_integrity(&pool, Some(&tlog))
             .await
             .map_err(|e| anyhow::anyhow!("registry integrity validation failed: {e}"))?;
         println!("{}", serde_json::to_string_pretty(&report)?);

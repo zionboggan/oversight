@@ -149,10 +149,10 @@ pub fn verify_inclusion_proof(
 
 /// On-disk leaf record format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct LeafRecord {
-    index: usize,
-    leaf_hash: String,
-    leaf_data: String,
+pub struct LeafRecord {
+    pub index: usize,
+    pub leaf_hash: String,
+    pub leaf_data: String,
 }
 
 /// Signed tree head.
@@ -346,6 +346,25 @@ impl TransparencyLog {
         })
     }
 
+    pub fn leaf_record(&self, index: usize) -> Result<Option<LeafRecord>> {
+        if index >= self.size() {
+            return Ok(None);
+        }
+        let f = File::open(&self.leaves_path)?;
+        let reader = BufReader::new(f);
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let rec: LeafRecord = serde_json::from_str(&line)?;
+            if rec.index == index {
+                return Ok(Some(rec));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn data_dir(&self) -> &Path {
         &self.dir
     }
@@ -480,5 +499,19 @@ mod tests {
     fn empty_tree_has_zero_root() {
         let (_d, tl) = mktlog();
         assert_eq!(tl.root(), [0u8; 32]);
+    }
+
+    #[test]
+    fn leaf_record_reads_appended_payload() {
+        let (_d, tl) = mktlog();
+        let event = serde_json::json!({"event": "beacon", "token_id": "token-1"});
+        tl.append_event(&event).unwrap();
+        let rec = tl.leaf_record(0).unwrap().unwrap();
+        assert_eq!(rec.index, 0);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&rec.leaf_data).unwrap(),
+            serde_json::json!({"event": "beacon", "token_id": "token-1"})
+        );
+        assert!(tl.leaf_record(1).unwrap().is_none());
     }
 }
