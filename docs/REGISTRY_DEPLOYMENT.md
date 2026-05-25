@@ -137,7 +137,8 @@ beacons, watermarks, events, corpus rows, identity mismatches, malformed
 event `extra` JSON, malformed corpus metadata JSON, duplicate or negative
 tlog indexes, missing event tlog indexes, event tlog indexes outside the
 on-disk tlog size, event rows whose indexed tlog leaf carries unrelated
-evidence, malformed manifest JSON, invalid manifest signatures, and
+evidence, malformed or non-contiguous local tlog leaf records, tlog leaf hash
+mismatches, malformed manifest JSON, invalid manifest signatures, and
 manifest/file ID divergence. Keep the Python database as a rollback artifact
 until validation, live conformance, and evidence-bundle checks pass against
 the Rust service.

@@ -101,6 +101,8 @@ Rust registry writes now fail closed if the local transparency log cannot
 append, so new evidence rows cannot silently lose their audit trail.
 The validator also checks that event rows point at matching tlog leaf payloads,
 not just in-range indexes.
+The local transparency log now fails closed when recovered leaf records are
+malformed, out of sequence, or hash-mismatched.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
 tests against real operator databases and a final wire-format stability
@@ -439,13 +441,13 @@ current stable line.
 | Rust oversight-formats | 40 | green |
 | Rust oversight-manifest | 3 | green |
 | Rust oversight-policy | 7 | green |
-| Rust oversight-registry | 10 | green |
+| Rust oversight-registry | 11 | green |
 | Rust oversight-rekor | 10 | green |
 | Rust oversight-semantic | 8 | green |
-| Rust oversight-tlog | 7 | green |
+| Rust oversight-tlog | 12 | green |
 | Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 127 | all green |
+| Total automated Rust unit tests | 133 | all green |
 
 ## Design principles (what Oversight never does)
 

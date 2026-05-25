@@ -46,6 +46,12 @@ pub enum TlogError {
     BadKeyLength(usize),
     #[error("index {0} out of range (tree_size={1})")]
     IndexOutOfRange(usize, usize),
+    #[error("leaf index mismatch: expected {expected}, got {found}")]
+    LeafIndexMismatch { expected: usize, found: usize },
+    #[error("leaf hash length for index {index}: expected 32, got {len}")]
+    BadLeafHashLength { index: usize, len: usize },
+    #[error("leaf hash mismatch at index {0}")]
+    LeafHashMismatch(usize),
 }
 
 pub type Result<T> = std::result::Result<T, TlogError>;
@@ -149,10 +155,13 @@ pub fn verify_inclusion_proof(
 
 /// On-disk leaf record format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LeafRecord {
     pub index: usize,
     pub leaf_hash: String,
     pub leaf_data: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leaf_data_hex: Option<String>,
 }
 
 /// Signed tree head.
@@ -208,15 +217,27 @@ impl TransparencyLog {
                 if line.trim().is_empty() {
                     continue;
                 }
-                if let Ok(rec) = serde_json::from_str::<LeafRecord>(&line) {
-                    if let Ok(bytes) = hex::decode(&rec.leaf_hash) {
-                        if bytes.len() == 32 {
-                            let mut arr = [0u8; 32];
-                            arr.copy_from_slice(&bytes);
-                            leaves.push(arr);
-                        }
-                    }
+                let rec: LeafRecord = serde_json::from_str(&line)?;
+                let expected_index = leaves.len();
+                if rec.index != expected_index {
+                    return Err(TlogError::LeafIndexMismatch {
+                        expected: expected_index,
+                        found: rec.index,
+                    });
                 }
+                let bytes = hex::decode(&rec.leaf_hash)?;
+                if bytes.len() != 32 {
+                    return Err(TlogError::BadLeafHashLength {
+                        index: rec.index,
+                        len: bytes.len(),
+                    });
+                }
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&bytes);
+                if arr != leaf_hash_for_data(&leaf_data_bytes(&rec)?) {
+                    return Err(TlogError::LeafHashMismatch(rec.index));
+                }
+                leaves.push(arr);
             }
         }
 
@@ -247,11 +268,7 @@ impl TransparencyLog {
         let mut leaves = self.leaves.lock().unwrap();
         let index = leaves.len();
 
-        // RFC 6962 leaf prefix
-        let mut prefixed = Vec::with_capacity(1 + leaf_data.len());
-        prefixed.push(0x00);
-        prefixed.extend_from_slice(leaf_data);
-        let leaf_hash = h(&prefixed);
+        let leaf_hash = leaf_hash_for_data(leaf_data);
         leaves.push(leaf_hash);
 
         // Invalidate cached root
@@ -262,6 +279,7 @@ impl TransparencyLog {
             index,
             leaf_hash: hex::encode(leaf_hash),
             leaf_data: String::from_utf8_lossy(leaf_data).to_string(),
+            leaf_data_hex: Some(hex::encode(leaf_data)),
         };
         let line = serde_json::to_string(&record)? + "\n";
         let mut f = OpenOptions::new()
@@ -368,6 +386,22 @@ impl TransparencyLog {
     pub fn data_dir(&self) -> &Path {
         &self.dir
     }
+}
+
+fn leaf_hash_for_data(leaf_data: &[u8]) -> [u8; 32] {
+    let mut prefixed = Vec::with_capacity(1 + leaf_data.len());
+    prefixed.push(0x00);
+    prefixed.extend_from_slice(leaf_data);
+    h(&prefixed)
+}
+
+fn leaf_data_bytes(rec: &LeafRecord) -> Result<Vec<u8>> {
+    rec.leaf_data_hex
+        .as_deref()
+        .map(hex::decode)
+        .transpose()
+        .map(|bytes| bytes.unwrap_or_else(|| rec.leaf_data.as_bytes().to_vec()))
+        .map_err(TlogError::Hex)
 }
 
 // serde_json needs this little helper for custom errors
@@ -493,6 +527,77 @@ mod tests {
         // Re-open — leaves should be recovered from disk
         let tl2 = TransparencyLog::open(dir.path()).unwrap();
         assert_eq!(tl2.size(), 2);
+    }
+
+    #[test]
+    fn reopen_rejects_malformed_leaf_record() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("leaves.jsonl"), "{not-json}\n").unwrap();
+        let err = match TransparencyLog::open(dir.path()) {
+            Ok(_) => panic!("malformed tlog opened"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, TlogError::Json(_)));
+    }
+
+    #[test]
+    fn reopen_rejects_noncontiguous_leaf_index() {
+        let dir = TempDir::new().unwrap();
+        let data = "event_a";
+        let rec = LeafRecord {
+            index: 1,
+            leaf_hash: hex::encode(leaf_hash_for_data(data.as_bytes())),
+            leaf_data: data.into(),
+            leaf_data_hex: None,
+        };
+        std::fs::write(
+            dir.path().join("leaves.jsonl"),
+            serde_json::to_string(&rec).unwrap() + "\n",
+        )
+        .unwrap();
+        let err = match TransparencyLog::open(dir.path()) {
+            Ok(_) => panic!("noncontiguous tlog opened"),
+            Err(err) => err,
+        };
+        assert!(matches!(
+            err,
+            TlogError::LeafIndexMismatch {
+                expected: 0,
+                found: 1
+            }
+        ));
+    }
+
+    #[test]
+    fn reopen_rejects_leaf_hash_mismatch() {
+        let dir = TempDir::new().unwrap();
+        let rec = LeafRecord {
+            index: 0,
+            leaf_hash: hex::encode(leaf_hash_for_data(b"event_a")),
+            leaf_data: "event_b".into(),
+            leaf_data_hex: None,
+        };
+        std::fs::write(
+            dir.path().join("leaves.jsonl"),
+            serde_json::to_string(&rec).unwrap() + "\n",
+        )
+        .unwrap();
+        let err = match TransparencyLog::open(dir.path()) {
+            Ok(_) => panic!("hash-mismatched tlog opened"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, TlogError::LeafHashMismatch(0)));
+    }
+
+    #[test]
+    fn survives_reopen_with_non_utf8_leaf_data() {
+        let dir = TempDir::new().unwrap();
+        {
+            let tl = TransparencyLog::open(dir.path()).unwrap();
+            tl.append(&[0xff, 0x00, 0xfe]).unwrap();
+        }
+        let tl2 = TransparencyLog::open(dir.path()).unwrap();
+        assert_eq!(tl2.size(), 1);
     }
 
     #[test]

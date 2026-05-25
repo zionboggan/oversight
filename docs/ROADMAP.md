@@ -248,6 +248,9 @@ As of 2026-05-22, registry writes fail closed when tlog append fails and
 `--validate-db` compares event tlog indexes against the on-disk tlog size.
 As of 2026-05-24, validation also checks that each event's indexed tlog leaf
 matches the event row rather than unrelated evidence.
+As of 2026-05-25, local tlog recovery rejects malformed leaf records,
+non-contiguous indexes, and leaf-hash mismatches instead of silently ignoring
+corrupted lines.
 Remaining work: longer-running deployment tests and a wire-format stability
 declaration before declaring v1.0 ready.
 

@@ -280,6 +280,11 @@ These expose the local transparency log so a federated verifier can
 monitor it without relying on the registry's own query responses.
 The signed tree head MUST be Ed25519-signed by the registry identity
 key advertised at `/.well-known/oversight-registry`.
+`/tlog/range` entries carry `index`, `leaf_hash`, `leaf_data`, and MAY
+carry `leaf_data_hex`. `leaf_data_hex`, when present, is the exact leaf
+bytes encoded as lowercase hex. Verifiers MUST recompute
+`SHA-256(0x00 || leaf_bytes)` and compare it to `leaf_hash`; legacy
+entries without `leaf_data_hex` use the UTF-8 bytes of `leaf_data`.
 
 ## Beacon endpoints
 
