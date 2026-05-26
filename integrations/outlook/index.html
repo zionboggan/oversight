@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Outlook Add-in | Oversight Protocol</title>
+  <meta name="description" content="Hosted pilot page for the Oversight Outlook add-in, a read-mode task pane for verifying and decrypting sealed attachments.">
+  <meta name="author" content="Zion Boggan">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../css/style.css">
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="../../" class="nav-brand"><span>Oversight</span> Protocol</a>
+    <ul class="nav-links">
+      <li><a href="../../">Home</a></li>
+      <li><a href="../../demo/">Demo</a></li>
+      <li><a href="../../viewer/">Inspect</a></li>
+      <li><a href="../../docs/">Docs</a></li>
+      <li><a href="../../research/">Research</a></li>
+      <li><a href="../../blog/">Blog</a></li>
+      <li><a href="../../about.html">About</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main>
+  <div class="container">
+    <div class="page-header">
+      <h1>Oversight Inspector for Outlook</h1>
+      <p class="subtitle">Read-mode Outlook task pane for verifying and decrypting sealed attachments.</p>
+    </div>
+
+    <p>
+      The Outlook add-in is a thin wrapper around the same browser inspector
+      code that powers <a href="../../viewer/">the public Sealed File Inspector</a>.
+      It reads a <code>.sealed</code> or <code>.oversight</code> attachment from the
+      currently open message, verifies the issuer signature, shows the signed
+      manifest, and can decrypt the payload when the recipient supplies their
+      identity JSON. There is no second crypto stack and no telemetry.
+    </p>
+
+    <div class="card-grid">
+      <div class="card">
+        <h3>Status</h3>
+        <p>
+          Hosted pilot scaffold. The manifest, task pane, JavaScript, and icons
+          are live under <code>oversightprotocol.dev</code>. The remaining gate is
+          a real Outlook tenant load-test against classic and hybrid sealed
+          attachments.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Permission</h3>
+        <p>
+          The add-in requests <code>ReadItem</code> only. It can read the open
+          message and its attachments, but it does not modify mail, send mail,
+          read folders, or persist private keys in Office storage.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Crypto boundary</h3>
+        <p>
+          Parse, signature verification, and decrypt are imported from the
+          public viewer modules on the same origin. Office.js is used only to
+          fetch the selected attachment from Outlook.
+        </p>
+      </div>
+    </div>
+
+    <h2>Pilot URLs</h2>
+    <table>
+      <thead>
+        <tr><th>Artifact</th><th>URL</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Manifest</td>
+          <td><a href="manifest.xml"><code>https://oversightprotocol.dev/integrations/outlook/manifest.xml</code></a></td>
+        </tr>
+        <tr>
+          <td>Task pane</td>
+          <td><a href="taskpane.html"><code>https://oversightprotocol.dev/integrations/outlook/taskpane.html</code></a></td>
+        </tr>
+        <tr>
+          <td>Implementation notes</td>
+          <td><a href="README.md"><code>integrations/outlook/README.md</code></a></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Sideload for a pilot</h2>
+    <p>
+      Use the hosted manifest URL above for the first Outlook pilot. Outlook on
+      the web and Outlook desktop both expose custom add-in installation under
+      the Get Add-ins flow. A Microsoft 365 admin can also deploy the same
+      manifest from the admin center under Integrated apps.
+    </p>
+
+    <ol>
+      <li>Open Outlook on the web or desktop with a test mailbox.</li>
+      <li>Open Get Add-ins, then choose My add-ins and Add a custom add-in.</li>
+      <li>Use the hosted manifest URL or upload <code>manifest.xml</code>.</li>
+      <li>Open a message that has a <code>.sealed</code> or <code>.oversight</code> attachment.</li>
+      <li>Launch Oversight Inspector from the message surface and load the attachment.</li>
+    </ol>
+
+    <h2>What is intentionally out of scope</h2>
+    <p>
+      The v1 add-in is verify/decrypt only. Sealing from Outlook requires an
+      issuer key flow and a stronger key-management story, so compose-mode
+      sealing stays deferred to v2. The task pane also does not perform
+      attribution searches against the registry; attribution remains a server
+      and operator workflow.
+    </p>
+
+    <h2>Next pilot checks</h2>
+    <ul>
+      <li>Load the hosted manifest in an Outlook dev tenant.</li>
+      <li>Verify a classic sealed attachment end to end.</li>
+      <li>Verify a hybrid post-quantum sealed attachment end to end.</li>
+      <li>Confirm the task pane keeps recipient identity material in memory only.</li>
+      <li>Replace placeholder icons before any AppSource review.</li>
+    </ul>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <p>Oversight Protocol &copy; 2026 Zion Boggan. Apache 2.0 License.</p>
+    <p style="color:var(--text-muted);font-size:13px;">Co-authored with Claude Opus 4.6 and 4.7 (Anthropic).</p>
+    <p><a href="https://github.com/oversight-protocol/oversight">GitHub</a></p>
+  </div>
+</footer>
+
+<script src="../../js/nav.js" defer></script>
+</body>
+</html>

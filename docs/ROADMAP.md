@@ -47,7 +47,8 @@ threat-model honesty, not on a calendar date.
    inspector, classic-suite decrypt, and hybrid (post-quantum) decrypt
    are all live.
 3. Outlook add-in. **Scaffold landed 2026-05-07** (`integrations/outlook/`,
-   `docs/OUTLOOK.md`); pilot in an Outlook tenant pending.
+   `docs/OUTLOOK.md`); hosted pilot page landed 2026-05-26, Outlook tenant
+   load-test pending.
 4. One regulated-industry design-partner deployment.
 5. SOC 2 Type 1 scoping in parallel with the design partner.
 6. Broad public launch (HN, Reddit, conferences). Not before the inspector,
@@ -201,10 +202,11 @@ verify / decrypt directly from `oversightprotocol.dev/viewer/`. No
 second crypto stack. Both classic and hybrid suites decrypt. Decision
 record at `docs/OUTLOOK.md`.
 
-Remaining for a real pilot: 64 px / 128 px icons in
-`integrations/outlook/assets/`, an Outlook tenant load-test, and the
-manifest hosting deploy under `oversightprotocol.dev/integrations/outlook/`.
-Sealing-from-Outlook (compose mode) is intentionally deferred to v2.
+As of 2026-05-26, the hosted pilot page and manifest URL are live under
+`oversightprotocol.dev/integrations/outlook/`. Remaining for a real pilot:
+an Outlook tenant load-test against classic and hybrid sealed attachments,
+plus a final icon design pass before AppSource review. Sealing-from-Outlook
+(compose mode) is intentionally deferred to v2.
 
 ### Hardware `KeyProvider` in Rust
 
@@ -323,7 +325,7 @@ via VM and retype, hardware-key pull mid-open.
 | 7 | Registry v1 spec + conformance harness + CORS | Shipped (v0.4.7) |
 | 8 | Browser inspector, classic-suite decrypt, opsec scanner + CI | Shipped |
 | 9 | Hybrid PQ decrypt in browser | Shipped (2026-05-03) |
-| 10 | Outlook add-in | Next |
+| 10 | Outlook add-in | Hosted pilot page live; tenant load-test next |
 | 11 | Hardware KeyProvider in Rust | Suite shipped (v0.4.11); PIV provider next |
 | 12 | Rust Axum registry, migration tooling | Migration validation shipped; deployment burn-in next |
 | 13 | arXiv preprint, threat-model repo document | Mid-term |

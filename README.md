@@ -10,6 +10,7 @@ No cloud vendor lock-in. No paid service required. No custom cryptography. Apach
 
 **Website:** [https://oversight-protocol.github.io/oversight/](https://oversightprotocol.dev/)
 **Mobile companion (verifier):** [oversight-protocol/oversight-mobile](https://github.com/oversight-protocol/oversight-mobile) — Flutter UI on top of the same Rust crates that power this CLI, currently in internal TestFlight beta.
+**Outlook add-in pilot:** [oversightprotocol.dev/integrations/outlook/](https://oversightprotocol.dev/integrations/outlook/), read-mode task pane that verifies and decrypts sealed attachments with the same browser inspector modules.
 
 ---
 

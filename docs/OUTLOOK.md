@@ -57,18 +57,24 @@ also coordinating an AppSource update if the add-in ever ships there.
 The task pane HTML, JS, and the existing viewer modules all live on
 `gh-pages`, served at `oversightprotocol.dev`. The path layout is:
 
+- `oversightprotocol.dev/integrations/outlook/`
 - `oversightprotocol.dev/integrations/outlook/taskpane.html`
 - `oversightprotocol.dev/integrations/outlook/taskpane.js`
+- `oversightprotocol.dev/integrations/outlook/manifest.xml`
 - `oversightprotocol.dev/viewer/viewer.js` (already deployed)
 - `oversightprotocol.dev/viewer/vendor/...` (already deployed)
 
 Same-origin imports keep the security model simple: the task pane is treated
 as one site by the browser, and Office's add-in sandbox enforces the rest.
+As of 2026-05-26, the hosted pilot page and manifest URL are live. The next
+gate is a real Outlook tenant load-test, not more static hosting work.
 
 ## Distribution
 
 For a pilot the manifest is sideloaded:
 
+- **Hosted pilot page**:
+  `https://oversightprotocol.dev/integrations/outlook/`
 - **Outlook on the web**: `Get Add-ins > My add-ins > Add a custom add-in
   from URL/file`, point at the hosted manifest.
 - **Outlook desktop**: same dialog from the ribbon.

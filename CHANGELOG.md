@@ -64,6 +64,10 @@
   Image watermarking writes the DCT mark and then preserves blind LSB recovery,
   with tests for the Python-compatible mark sequence, DCT verification, and
   adapter round trip.
+- **Outlook add-in hosted pilot page.** `integrations/outlook/index.html`
+  documents the hosted manifest URL, task pane URL, requested `ReadItem`
+  permission, same-origin viewer reuse, sideload steps, and remaining tenant
+  load-test gates for the Outlook read-mode inspector.
 
 ## v0.4.11 - 2026-05-08 Hardware-keys completion: Python parity, browser support, end-to-end seal
 
