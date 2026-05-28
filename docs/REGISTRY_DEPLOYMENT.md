@@ -142,6 +142,9 @@ mismatches, malformed manifest JSON, invalid manifest signatures, and
 manifest/file ID divergence. Keep the Python database as a rollback artifact
 until validation, live conformance, and evidence-bundle checks pass against
 the Rust service.
+The Rust `/tlog/range` route also reads through validated tlog records, so
+malformed or hash-mismatched local leaf data blocks the range response instead
+of disappearing from monitor output.
 
 ## Rust Registry Burn-In Checklist
 
@@ -157,8 +160,8 @@ reference registry to the Rust Axum registry:
 5. Start the Rust registry on loopback with `OVERSIGHT_OPERATOR_TOKEN` and
    `OVERSIGHT_DNS_EVENT_SECRET` set.
 6. Run the live registry v1 conformance harness against the Rust endpoint.
-7. Fetch `/.well-known/oversight-registry`, `/tlog/head`, and at least one
-   `/evidence/{file_id}` bundle, then verify the evidence bundle with an
-   independent client.
+7. Fetch `/.well-known/oversight-registry`, `/tlog/head`, `/tlog/range`,
+   and at least one `/evidence/{file_id}` bundle, then verify the evidence
+   bundle with an independent client.
 8. Keep the Python database and tlog as rollback artifacts until the Rust
    service has completed the operator's burn-in window.

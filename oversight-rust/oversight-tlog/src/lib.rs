@@ -52,6 +52,8 @@ pub enum TlogError {
     BadLeafHashLength { index: usize, len: usize },
     #[error("leaf hash mismatch at index {0}")]
     LeafHashMismatch(usize),
+    #[error("leaf record missing at index {0}")]
+    LeafRecordMissing(usize),
 }
 
 pub type Result<T> = std::result::Result<T, TlogError>;
@@ -217,27 +219,8 @@ impl TransparencyLog {
                 if line.trim().is_empty() {
                     continue;
                 }
-                let rec: LeafRecord = serde_json::from_str(&line)?;
-                let expected_index = leaves.len();
-                if rec.index != expected_index {
-                    return Err(TlogError::LeafIndexMismatch {
-                        expected: expected_index,
-                        found: rec.index,
-                    });
-                }
-                let bytes = hex::decode(&rec.leaf_hash)?;
-                if bytes.len() != 32 {
-                    return Err(TlogError::BadLeafHashLength {
-                        index: rec.index,
-                        len: bytes.len(),
-                    });
-                }
-                let mut arr = [0u8; 32];
-                arr.copy_from_slice(&bytes);
-                if arr != leaf_hash_for_data(&leaf_data_bytes(&rec)?) {
-                    return Err(TlogError::LeafHashMismatch(rec.index));
-                }
-                leaves.push(arr);
+                let rec = parse_leaf_record(&line, leaves.len())?;
+                leaves.push(leaf_hash_bytes(&rec)?);
             }
         }
 
@@ -365,22 +348,55 @@ impl TransparencyLog {
     }
 
     pub fn leaf_record(&self, index: usize) -> Result<Option<LeafRecord>> {
-        if index >= self.size() {
+        let leaves = self.leaves.lock().unwrap();
+        if index >= leaves.len() {
             return Ok(None);
         }
         let f = File::open(&self.leaves_path)?;
         let reader = BufReader::new(f);
+        let mut expected_index = 0usize;
         for line in reader.lines() {
             let line = line?;
             if line.trim().is_empty() {
                 continue;
             }
-            let rec: LeafRecord = serde_json::from_str(&line)?;
+            let rec = parse_leaf_record(&line, expected_index)?;
             if rec.index == index {
                 return Ok(Some(rec));
             }
+            expected_index += 1;
         }
-        Ok(None)
+        Err(TlogError::LeafRecordMissing(index))
+    }
+
+    pub fn range_records(&self, start: usize, limit: usize) -> Result<Vec<LeafRecord>> {
+        let leaves = self.leaves.lock().unwrap();
+        if limit == 0 || start >= leaves.len() {
+            return Ok(Vec::new());
+        }
+        let end = start.saturating_add(limit).min(leaves.len());
+        let f = File::open(&self.leaves_path)?;
+        let reader = BufReader::new(f);
+        let mut expected_index = 0usize;
+        let mut records = Vec::with_capacity(end - start);
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            if expected_index >= end {
+                break;
+            }
+            let rec = parse_leaf_record(&line, expected_index)?;
+            if rec.index >= start {
+                records.push(rec);
+            }
+            expected_index += 1;
+        }
+        if expected_index < end {
+            return Err(TlogError::LeafRecordMissing(expected_index));
+        }
+        Ok(records)
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -395,6 +411,19 @@ fn leaf_hash_for_data(leaf_data: &[u8]) -> [u8; 32] {
     h(&prefixed)
 }
 
+fn leaf_hash_bytes(rec: &LeafRecord) -> Result<[u8; 32]> {
+    let bytes = hex::decode(&rec.leaf_hash)?;
+    if bytes.len() != 32 {
+        return Err(TlogError::BadLeafHashLength {
+            index: rec.index,
+            len: bytes.len(),
+        });
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&bytes);
+    Ok(arr)
+}
+
 fn leaf_data_bytes(rec: &LeafRecord) -> Result<Vec<u8>> {
     rec.leaf_data_hex
         .as_deref()
@@ -402,6 +431,21 @@ fn leaf_data_bytes(rec: &LeafRecord) -> Result<Vec<u8>> {
         .transpose()
         .map(|bytes| bytes.unwrap_or_else(|| rec.leaf_data.as_bytes().to_vec()))
         .map_err(TlogError::Hex)
+}
+
+fn parse_leaf_record(line: &str, expected_index: usize) -> Result<LeafRecord> {
+    let rec: LeafRecord = serde_json::from_str(line)?;
+    if rec.index != expected_index {
+        return Err(TlogError::LeafIndexMismatch {
+            expected: expected_index,
+            found: rec.index,
+        });
+    }
+    let leaf_hash = leaf_hash_bytes(&rec)?;
+    if leaf_hash != leaf_hash_for_data(&leaf_data_bytes(&rec)?) {
+        return Err(TlogError::LeafHashMismatch(rec.index));
+    }
+    Ok(rec)
 }
 
 // serde_json needs this little helper for custom errors
@@ -618,5 +662,32 @@ mod tests {
             serde_json::json!({"event": "beacon", "token_id": "token-1"})
         );
         assert!(tl.leaf_record(1).unwrap().is_none());
+    }
+
+    #[test]
+    fn range_records_returns_requested_records() {
+        let (_d, tl) = mktlog();
+        for event in ["event_a", "event_b", "event_c"] {
+            tl.append(event.as_bytes()).unwrap();
+        }
+        let records = tl.range_records(1, 2).unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].index, 1);
+        assert_eq!(records[0].leaf_data, "event_b");
+        assert_eq!(records[1].index, 2);
+        assert_eq!(records[1].leaf_data, "event_c");
+        assert!(tl.range_records(3, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn range_records_rejects_corrupted_disk_record() {
+        let (dir, tl) = mktlog();
+        tl.append(b"event_a").unwrap();
+        std::fs::write(dir.path().join("leaves.jsonl"), "{not-json}\n").unwrap();
+        let err = match tl.range_records(0, 1) {
+            Ok(_) => panic!("corrupted tlog range succeeded"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, TlogError::Json(_)));
     }
 }

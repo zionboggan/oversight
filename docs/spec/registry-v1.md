@@ -285,6 +285,8 @@ carry `leaf_data_hex`. `leaf_data_hex`, when present, is the exact leaf
 bytes encoded as lowercase hex. Verifiers MUST recompute
 `SHA-256(0x00 || leaf_bytes)` and compare it to `leaf_hash`; legacy
 entries without `leaf_data_hex` use the UTF-8 bytes of `leaf_data`.
+Registries MUST fail a range request rather than omit malformed,
+non-contiguous, or hash-mismatched records from the requested window.
 
 ## Beacon endpoints
 

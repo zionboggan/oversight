@@ -104,6 +104,9 @@ The validator also checks that event rows point at matching tlog leaf payloads,
 not just in-range indexes.
 The local transparency log now fails closed when recovered leaf records are
 malformed, out of sequence, or hash-mismatched.
+The Rust registry's `/tlog/range` endpoint uses those validated leaf records
+too, so federated monitors cannot receive a partial range with corrupted lines
+silently skipped.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
 tests against real operator databases and a final wire-format stability
@@ -445,10 +448,10 @@ current stable line.
 | Rust oversight-registry | 11 | green |
 | Rust oversight-rekor | 10 | green |
 | Rust oversight-semantic | 8 | green |
-| Rust oversight-tlog | 12 | green |
+| Rust oversight-tlog | 14 | green |
 | Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 133 | all green |
+| Total automated Rust unit tests | 135 | all green |
 
 ## Design principles (what Oversight never does)
 

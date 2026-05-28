@@ -253,6 +253,9 @@ matches the event row rather than unrelated evidence.
 As of 2026-05-25, local tlog recovery rejects malformed leaf records,
 non-contiguous indexes, and leaf-hash mismatches instead of silently ignoring
 corrupted lines.
+As of 2026-05-28, `/tlog/range` reads through the validated tlog record API
+instead of parsing `leaves.jsonl` directly, so monitor responses fail closed
+when an on-disk leaf is malformed or hash-mismatched.
 Remaining work: longer-running deployment tests and a wire-format stability
 declaration before declaring v1.0 ready.
 

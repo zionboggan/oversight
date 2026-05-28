@@ -1,7 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader};
 use std::sync::Arc;
 
 use crate::error::{RegistryError, Result};
@@ -44,35 +43,10 @@ pub async fn tlog_range(
     Query(params): Query<RangeParams>,
 ) -> Result<Json<serde_json::Value>> {
     let limit = params.limit.clamp(1, 1000);
-    let leaves_path = state.tlog.data_dir().join("leaves.jsonl");
-    if !leaves_path.exists() {
-        return Ok(Json(serde_json::json!({
-            "start": params.start,
-            "count": 0,
-            "entries": [],
-        })));
-    }
-
-    let file = std::fs::File::open(&leaves_path)
-        .map_err(|e| RegistryError::Internal(format!("could not open tlog leaves: {e}")))?;
-    let reader = BufReader::new(file);
-    let mut entries = Vec::new();
-    for (idx, line) in reader.lines().enumerate() {
-        if idx < params.start {
-            continue;
-        }
-        if entries.len() >= limit {
-            break;
-        }
-        let line =
-            line.map_err(|e| RegistryError::Internal(format!("could not read tlog leaf: {e}")))?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-            entries.push(value);
-        }
-    }
+    let entries = state
+        .tlog
+        .range_records(params.start, limit)
+        .map_err(|e| RegistryError::Internal(format!("could not read tlog range: {e}")))?;
 
     Ok(Json(serde_json::json!({
         "start": params.start,

@@ -36,7 +36,10 @@
   tlog leaf payload so an index cannot point at unrelated evidence and still
   pass burn-in checks. Local tlog recovery now rejects malformed records,
   non-contiguous indexes, and leaf-hash mismatches instead of silently
-  ignoring corrupted lines during startup or validation.
+  ignoring corrupted lines during startup or validation. `/tlog/range` now
+  reads through the same validated tlog API, so malformed or hash-mismatched
+  records fail the range request instead of being silently omitted from
+  monitor responses.
 - **GitHub Actions runtime hygiene.** Main CI workflows opt into the GitHub
   Actions Node 24 runtime before the hosted runner default changes.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest
