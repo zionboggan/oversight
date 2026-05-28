@@ -768,21 +768,13 @@ def tlog_range(start: int = 0, limit: int = 500):
     """Return tlog leaf entries in [start, start+limit). For CanaryKeeper polling."""
     if not TLOG:
         raise HTTPException(503, "tlog not initialized")
+    if start < 0:
+        raise HTTPException(400, "start must be non-negative")
     limit = min(max(1, limit), 1000)
-    leaves_path = TLOG.leaves_path
-    if not leaves_path.exists():
-        return {"start": start, "count": 0, "entries": []}
-    entries = []
-    with leaves_path.open("r") as f:
-        for i, line in enumerate(f):
-            if i < start:
-                continue
-            if len(entries) >= limit:
-                break
-            try:
-                entries.append(json.loads(line))
-            except ValueError:
-                continue
+    try:
+        entries = TLOG.range_records(start, limit)
+    except ValueError as exc:
+        raise HTTPException(500, f"tlog range validation failed: {exc}") from exc
     return {"start": start, "count": len(entries), "entries": entries}
 
 

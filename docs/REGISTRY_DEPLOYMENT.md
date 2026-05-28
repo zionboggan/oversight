@@ -145,6 +145,9 @@ the Rust service.
 The Rust `/tlog/range` route also reads through validated tlog records, so
 malformed or hash-mismatched local leaf data blocks the range response instead
 of disappearing from monitor output.
+The Python reference registry uses the same fail-closed local tlog validation
+for startup recovery and `/tlog/range`; newly appended records include
+`leaf_data_hex` so exact event bytes can be recomputed by monitors.
 
 ## Rust Registry Burn-In Checklist
 

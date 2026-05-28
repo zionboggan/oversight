@@ -80,6 +80,36 @@ def _rfc6962_path(leaf_hashes: list[bytes], m: int) -> list[bytes]:
         return _rfc6962_path(leaf_hashes[k:], m - k) + [_rfc6962_mth(leaf_hashes[:k])]
 
 
+def _leaf_data_bytes(rec: dict) -> bytes:
+    if rec.get("leaf_data_hex") is not None:
+        return bytes.fromhex(rec["leaf_data_hex"])
+    leaf_data = rec.get("leaf_data")
+    if not isinstance(leaf_data, str):
+        raise ValueError("leaf_data must be a string")
+    return leaf_data.encode("utf-8")
+
+
+def _parse_leaf_record(line: str, expected_index: int) -> tuple[dict, bytes]:
+    rec = json.loads(line)
+    if not isinstance(rec, dict):
+        raise ValueError("leaf record must be an object")
+    found_index = rec.get("index")
+    if type(found_index) is not int:
+        raise ValueError("leaf index must be an integer")
+    if found_index != expected_index:
+        raise ValueError(
+            f"leaf index mismatch: expected {expected_index}, got {found_index}"
+        )
+    leaf_hash = bytes.fromhex(rec["leaf_hash"])
+    if len(leaf_hash) != 32:
+        raise ValueError(
+            f"leaf hash length for index {found_index}: expected 32, got {len(leaf_hash)}"
+        )
+    if leaf_hash != _h(b"\x00" + _leaf_data_bytes(rec)):
+        raise ValueError(f"leaf hash mismatch at index {found_index}")
+    return rec, leaf_hash
+
+
 class TransparencyLog:
     """Append-only Merkle log with signed tree heads.
 
@@ -108,12 +138,13 @@ class TransparencyLog:
         if not self.leaves_path.exists():
             return
         with self.leaves_path.open("r") as f:
+            expected_index = 0
             for line in f:
-                try:
-                    rec = json.loads(line)
-                    self._leaves.append(bytes.fromhex(rec["leaf_hash"]))
-                except (ValueError, KeyError):
+                if not line.strip():
                     continue
+                _, leaf_hash = _parse_leaf_record(line, expected_index)
+                self._leaves.append(leaf_hash)
+                expected_index += 1
 
     def append(self, leaf_data: bytes | str | dict) -> int:
         """Append a leaf. Durable: fsync before return."""
@@ -135,6 +166,7 @@ class TransparencyLog:
                 "index": index,
                 "leaf_hash": leaf_hash.hex(),
                 "leaf_data": leaf_bytes.decode("utf-8", errors="replace"),
+                "leaf_data_hex": leaf_bytes.hex(),
             }) + "\n"
             with self.leaves_path.open("a") as f:
                 f.write(record)
@@ -195,6 +227,31 @@ class TransparencyLog:
             "root": self.root().hex(),
             "tree_size": len(self._leaves),
         }
+
+    def range_records(self, start: int = 0, limit: int = 500) -> list[dict]:
+        if start < 0:
+            raise ValueError("start must be non-negative")
+        if limit <= 0:
+            return []
+        with self._lock:
+            if start >= len(self._leaves):
+                return []
+            end = min(start + limit, len(self._leaves))
+            records: list[dict] = []
+            expected_index = 0
+            with self.leaves_path.open("r") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    if expected_index >= end:
+                        break
+                    rec, _ = _parse_leaf_record(line, expected_index)
+                    if expected_index >= start:
+                        records.append(rec)
+                    expected_index += 1
+            if expected_index < end:
+                raise ValueError(f"leaf record missing at index {expected_index}")
+            return records
 
 
 def verify_inclusion_proof(

@@ -272,6 +272,25 @@ def check_tlog_head(cli: Client) -> None:
     check("tlog-head-200", r.status_code == 200, f"status={r.status_code}")
 
 
+def check_tlog_range(cli: Client) -> None:
+    r = cli.get("/tlog/range?start=0&limit=10")
+    body = r.json() if r.status_code == 200 else {}
+    entries = body.get("entries")
+    range_ok = (
+        r.status_code == 200
+        and isinstance(entries, list)
+        and body.get("count") == len(entries)
+        and all(
+            isinstance(entry, dict)
+            and isinstance(entry.get("index"), int)
+            and isinstance(entry.get("leaf_hash"), str)
+            and isinstance(entry.get("leaf_data"), str)
+            for entry in entries
+        )
+    )
+    check("tlog-range-200-shape", range_ok, f"status={r.status_code} body={body}")
+
+
 def check_dns_event_requires_secret(cli: Client) -> None:
     token = "t-" + uuid.uuid4().hex
     # Non-loopback is the semantic concern. For in-process TestClient the
@@ -346,6 +365,7 @@ def run(cli: Client) -> None:
 
         print("\n[*] Transparency log")
         check_tlog_head(cli)
+        check_tlog_range(cli)
 
         print("\n[*] CORS")
         check_cors_headers(cli)

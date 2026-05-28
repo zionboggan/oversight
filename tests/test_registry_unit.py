@@ -213,6 +213,32 @@ def t5_operator_token_gates_write_side_apis_when_configured():
     print("  [PASS] optional operator token gates write-side APIs")
 
 
+def t6_tlog_range_fails_closed_on_corrupt_leaf():
+    original_tlog = registry_server.TLOG
+    td = os.path.join(ROOT, ".tmp-tests", f"registry-range-{uuid.uuid4().hex}")
+    os.makedirs(td, exist_ok=False)
+    try:
+        registry_server.TLOG = TransparencyLog(td)
+        registry_server.TLOG.append({"event": "register", "file_id": "f"})
+        out = registry_server.tlog_range(start=0, limit=1)
+        assert out["count"] == 1
+        assert out["entries"][0]["index"] == 0
+
+        with open(os.path.join(td, "leaves.jsonl"), "w", encoding="utf-8") as f:
+            f.write("{not-json}\n")
+        try:
+            registry_server.tlog_range(start=0, limit=1)
+        except HTTPException as exc:
+            assert exc.status_code == 500
+            assert "tlog range validation failed" in exc.detail
+        else:
+            raise AssertionError("corrupt tlog range should fail closed")
+    finally:
+        registry_server.TLOG = original_tlog
+        shutil.rmtree(td, ignore_errors=True)
+    print("  [PASS] tlog range rejects corrupt leaf records")
+
+
 def main():
     print("=" * 60)
     print("  registry.server - focused unit tests")
@@ -222,8 +248,9 @@ def main():
     t3_dns_event_requires_secret_for_non_loopback()
     t4_evidence_bundle_can_attach_tlog_proofs()
     t5_operator_token_gates_write_side_apis_when_configured()
+    t6_tlog_range_fails_closed_on_corrupt_leaf()
     print()
-    print("  ALL TESTS PASSED - 5/5")
+    print("  ALL TESTS PASSED - 6/6")
 
 
 if __name__ == "__main__":

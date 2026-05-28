@@ -107,6 +107,9 @@ malformed, out of sequence, or hash-mismatched.
 The Rust registry's `/tlog/range` endpoint uses those validated leaf records
 too, so federated monitors cannot receive a partial range with corrupted lines
 silently skipped.
+The Python reference registry now has matching tlog recovery and range
+validation, including exact `leaf_data_hex` persistence for newly appended
+leaves.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
 tests against real operator databases and a final wire-format stability
@@ -233,7 +236,7 @@ now exposes the full read-only and beacon surface
 `/v/{token_id}`, `/candidates/semantic`) and ships strict CORS
 restricted to the public browser-inspector origins with GET and
 OPTIONS only. The Axum server now passes `tests/test_registry_conformance.py`
-(33/33) in live-URL mode. `oversight-rust/oversight-manifest` learned
+(34/34) in live-URL mode. `oversight-rust/oversight-manifest` learned
 to verify Python-signed v0.4.5+ manifests by carrying
 `canonical_content_hash` and `l3_policy` in the signed model, with
 a fallback path for older manifests that lack those fields.
@@ -439,7 +442,7 @@ current stable line.
 
 | Layer | Checks | Status |
 |---|---|---|
-| Python pytest suite | 10 | green |
+| Python pytest suite | 11 | green |
 | Rust oversight-container | 17 | green |
 | Rust oversight-crypto | 21 | green |
 | Rust oversight-formats | 40 | green |

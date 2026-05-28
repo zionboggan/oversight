@@ -17,7 +17,7 @@ threat-model honesty, not on a calendar date.
    at `docs/spec/registry-v1.md` is aligned against the reference server:
    canonical-JSON algorithm, uniform error envelope, normative endpoint and
    beacon paths, `/evidence` bundle shape, and `/tlog/head|proof|range` are
-   pinned. `tests/test_registry_conformance.py` runs 33 checks in-process
+   pinned. `tests/test_registry_conformance.py` runs 34 checks in-process
    or against a live URL. An operator claims v1 compatibility with
    `OVERSIGHT_REGISTRY_URL=https://registry.example.org python3 tests/test_registry_conformance.py`.
 4. **Browser inspector and classic-suite decrypt** shipped on
@@ -143,7 +143,7 @@ the reference server actually serves. The spec now pins:
 - `/evidence/{file_id}` bundle fields
 - `/tlog/head|proof|range` for federated verifiers
 
-`tests/test_registry_conformance.py` is a 33-check harness with two
+`tests/test_registry_conformance.py` is a 34-check harness with two
 modes. In-process against a FastAPI TestClient for CI, or against a
 live URL when `OVERSIGHT_REGISTRY_URL` is set. An independent operator
 who passes the harness claims v1 compatibility.
@@ -235,7 +235,7 @@ require hardware backing for sensitive material.
 
 `oversight-rust/oversight-registry` is scaffolded with all endpoints
 implemented under `#![forbid(unsafe_code)]`. As of 2026-05-14, the Axum
-server passes the existing 33-check `tests/test_registry_conformance.py`
+server passes the existing 34-check `tests/test_registry_conformance.py`
 harness in live-URL mode against the registry v1 surface with
 `OVERSIGHT_OPERATOR_TOKEN` enabled. The Rust registry now matches the Python
 reference for write-side operator-token auth and DNS bridge bearer/header
@@ -256,6 +256,8 @@ corrupted lines.
 As of 2026-05-28, `/tlog/range` reads through the validated tlog record API
 instead of parsing `leaves.jsonl` directly, so monitor responses fail closed
 when an on-disk leaf is malformed or hash-mismatched.
+The Python reference registry now mirrors that fail-closed tlog recovery and
+range behavior, with `leaf_data_hex` on newly appended local tlog records.
 Remaining work: longer-running deployment tests and a wire-format stability
 declaration before declaring v1.0 ready.
 

@@ -39,7 +39,11 @@
   ignoring corrupted lines during startup or validation. `/tlog/range` now
   reads through the same validated tlog API, so malformed or hash-mismatched
   records fail the range request instead of being silently omitted from
-  monitor responses.
+  monitor responses. The Python reference tlog now matches that behavior:
+  startup and `/tlog/range` fail closed on corrupt leaf records, and new
+  leaves carry `leaf_data_hex` so exact leaf bytes survive recovery. The
+  registry v1 conformance harness now checks `/tlog/range` response shape,
+  raising the live/in-process harness to 34 checks.
 - **GitHub Actions runtime hygiene.** Main CI workflows opt into the GitHub
   Actions Node 24 runtime before the hosted runner default changes.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest
