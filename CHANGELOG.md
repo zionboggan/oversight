@@ -41,9 +41,13 @@
   records fail the range request instead of being silently omitted from
   monitor responses. The Python reference tlog now matches that behavior:
   startup and `/tlog/range` fail closed on corrupt leaf records, and new
-  leaves carry `leaf_data_hex` so exact leaf bytes survive recovery. The
-  registry v1 conformance harness now checks `/tlog/range` response shape,
-  raising the live/in-process harness to 34 checks.
+  leaves carry `leaf_data_hex` so exact leaf bytes survive recovery.
+- **Registry v1 error envelope parity.** Python and Rust registry errors now
+  return the spec envelope `{error: {code, message}}` for registry failures
+  instead of the framework-native string-only shapes. The conformance harness
+  now checks `/tlog/range` response shape plus representative
+  `signature_invalid`, `sidecar_mismatch`, `missing_field`, and `not_found`
+  error envelopes, raising the live/in-process harness to 38 checks.
 - **GitHub Actions runtime hygiene.** Main CI workflows opt into the GitHub
   Actions Node 24 runtime before the hosted runner default changes.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest

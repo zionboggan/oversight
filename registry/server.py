@@ -32,6 +32,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives import serialization
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, JSONResponse
 from pydantic import BaseModel
@@ -276,6 +277,47 @@ app.add_middleware(
     allow_headers=["Accept", "Content-Type"],
     max_age=3600,
 )
+
+
+def _registry_error_code(status_code: int, message: str) -> str:
+    text = message.lower()
+    if status_code == 401:
+        return "auth_required"
+    if status_code == 404:
+        return "not_found"
+    if status_code == 409:
+        return "issuer_mismatch"
+    if status_code == 429:
+        return "rate_limited"
+    if status_code >= 500:
+        return "server_error"
+    if "signature" in text:
+        return "signature_invalid"
+    if "beacons do not match" in text or "watermarks do not match" in text:
+        return "sidecar_mismatch"
+    return "missing_field"
+
+
+def _error_envelope(code: str, message: str) -> dict:
+    return {"error": {"code": code, "message": message}}
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(_request: Request, exc: HTTPException):
+    message = str(exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_envelope(_registry_error_code(exc.status_code, message), message),
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(_request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=400,
+        content=_error_envelope("missing_field", f"request validation failed: {exc}"),
+    )
 
 
 class RegistrationRequest(BaseModel):

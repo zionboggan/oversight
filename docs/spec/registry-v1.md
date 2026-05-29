@@ -333,6 +333,7 @@ OVERSIGHT_REGISTRY_URL=https://registry.example.org \
 ```
 
 The harness uses a throwaway issuer identity, posts a minimal valid
-manifest, and then validates the responses. Runs against the local
-reference registry are included in CI; operator-hosted runs are the
+manifest, and then validates the responses. It also checks representative
+error envelope codes for malformed or missing inputs. Runs against the
+local reference registry are included in CI; operator-hosted runs are the
 interop acceptance gate for federation.

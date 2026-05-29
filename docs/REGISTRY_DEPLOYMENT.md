@@ -148,6 +148,9 @@ of disappearing from monitor output.
 The Python reference registry uses the same fail-closed local tlog validation
 for startup recovery and `/tlog/range`; newly appended records include
 `leaf_data_hex` so exact event bytes can be recomputed by monitors.
+Both reference registries return the registry v1 error envelope
+`{"error":{"code":"...","message":"..."}}` for registry failures, and the
+live conformance harness checks representative envelope codes.
 
 ## Rust Registry Burn-In Checklist
 

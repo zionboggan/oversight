@@ -27,6 +27,29 @@ pub enum RegistryError {
     Internal(String),
 }
 
+impl RegistryError {
+    fn code_for_bad_request(message: &str) -> &'static str {
+        if message.contains("signature") {
+            return "signature_invalid";
+        }
+        if message.contains("beacons do not match") || message.contains("watermarks do not match") {
+            return "sidecar_mismatch";
+        }
+        "missing_field"
+    }
+
+    fn envelope_code(&self, message: &str) -> &'static str {
+        match self {
+            RegistryError::BadRequest(_) => Self::code_for_bad_request(message),
+            RegistryError::NotFound(_) => "not_found",
+            RegistryError::Conflict(_) => "issuer_mismatch",
+            RegistryError::Unauthorized(_) => "auth_required",
+            RegistryError::RateLimited => "rate_limited",
+            RegistryError::Database(_) | RegistryError::Internal(_) => "server_error",
+        }
+    }
+}
+
 impl IntoResponse for RegistryError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
@@ -48,9 +71,43 @@ impl IntoResponse for RegistryError {
             _ => tracing::error!(%status, %message, "server error"),
         }
 
-        let body = serde_json::json!({ "error": message });
+        let code = self.envelope_code(&message);
+        let body = serde_json::json!({
+            "error": {
+                "code": code,
+                "message": message,
+            },
+        });
         (status, Json(body)).into_response()
     }
 }
 
 pub type Result<T> = std::result::Result<T, RegistryError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_error_codes_match_v1_envelope() {
+        assert_eq!(
+            RegistryError::BadRequest("manifest signature invalid".into())
+                .envelope_code("manifest signature invalid"),
+            "signature_invalid"
+        );
+        assert_eq!(
+            RegistryError::BadRequest("request beacons do not match signed manifest".into())
+                .envelope_code("request beacons do not match signed manifest"),
+            "sidecar_mismatch"
+        );
+        assert_eq!(
+            RegistryError::Unauthorized("operator authentication required".into())
+                .envelope_code("operator authentication required"),
+            "auth_required"
+        );
+        assert_eq!(
+            RegistryError::NotFound("unknown file_id".into()).envelope_code("unknown file_id"),
+            "not_found"
+        );
+    }
+}

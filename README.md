@@ -236,7 +236,7 @@ now exposes the full read-only and beacon surface
 `/v/{token_id}`, `/candidates/semantic`) and ships strict CORS
 restricted to the public browser-inspector origins with GET and
 OPTIONS only. The Axum server now passes `tests/test_registry_conformance.py`
-(34/34) in live-URL mode. `oversight-rust/oversight-manifest` learned
+(38/38) in live-URL mode. `oversight-rust/oversight-manifest` learned
 to verify Python-signed v0.4.5+ manifests by carrying
 `canonical_content_hash` and `l3_policy` in the signed model, with
 a fallback path for older manifests that lack those fields.
@@ -448,13 +448,13 @@ current stable line.
 | Rust oversight-formats | 40 | green |
 | Rust oversight-manifest | 3 | green |
 | Rust oversight-policy | 7 | green |
-| Rust oversight-registry | 11 | green |
+| Rust oversight-registry | 12 | green |
 | Rust oversight-rekor | 10 | green |
 | Rust oversight-semantic | 8 | green |
 | Rust oversight-tlog | 14 | green |
 | Rust oversight-watermark | 4 | green |
 | Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 135 | all green |
+| Total automated Rust unit tests | 136 | all green |
 
 ## Design principles (what Oversight never does)
 

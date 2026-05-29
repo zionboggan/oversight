@@ -57,6 +57,22 @@ def check(name: str, condition: bool, detail: str = "") -> None:
         print(f"  {FAIL} {name}  ({detail})")
 
 
+def check_error_envelope(name: str, response, expected_status: int, expected_code: str) -> None:
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    error = body.get("error") if isinstance(body, dict) else None
+    ok = (
+        response.status_code == expected_status
+        and isinstance(error, dict)
+        and error.get("code") == expected_code
+        and isinstance(error.get("message"), str)
+        and bool(error.get("message"))
+    )
+    check(name, ok, f"status={response.status_code} body={body}")
+
+
 # ---- Client abstraction -----------------------------------------------------
 
 
@@ -228,12 +244,14 @@ def check_register_rejects_unsigned(cli: Client, manifest: dict, beacons: list, 
     tampered["file_id"] = str(uuid.uuid4())
     r = cli.post("/register", json={"manifest": tampered, "beacons": beacons, "watermarks": watermarks})
     check("register-rejects-bad-sig", r.status_code == 400, f"status={r.status_code}")
+    check_error_envelope("register-bad-sig-error-envelope", r, 400, "signature_invalid")
 
 
 def check_register_rejects_sidecar_mismatch(cli: Client, manifest: dict, beacons: list, watermarks: list) -> None:
     bad = list(beacons) + [{"token_id": "sneaky", "kind": "dns"}]
     r = cli.post("/register", json={"manifest": manifest, "beacons": bad, "watermarks": watermarks})
     check("register-rejects-sidecar-mismatch", r.status_code == 400, f"status={r.status_code}")
+    check_error_envelope("register-sidecar-error-envelope", r, 400, "sidecar_mismatch")
 
 
 def check_attribute_by_token(cli: Client, beacons: list) -> None:
@@ -247,6 +265,11 @@ def check_attribute_miss(cli: Client) -> None:
     r = cli.post("/attribute", json={"token_id": "nonexistent-token-id"})
     check("attribute-miss-200", r.status_code == 200)
     check("attribute-miss-found-false", r.json().get("found") is False)
+
+
+def check_attribute_missing_field_error(cli: Client) -> None:
+    r = cli.post("/attribute", json={})
+    check_error_envelope("attribute-missing-field-error-envelope", r, 400, "missing_field")
 
 
 def check_evidence(cli: Client, file_id: str) -> None:
@@ -265,6 +288,11 @@ def check_evidence(cli: Client, file_id: str) -> None:
           isinstance(body.get("tlog_proofs"), list))
     check("evidence-has-bundle-signature",
           isinstance(body.get("bundle_signature_ed25519"), str))
+
+
+def check_evidence_missing_error(cli: Client) -> None:
+    r = cli.get("/evidence/missing-file-id")
+    check_error_envelope("evidence-missing-error-envelope", r, 404, "not_found")
 
 
 def check_tlog_head(cli: Client) -> None:
@@ -361,7 +389,9 @@ def run(cli: Client) -> None:
         print("\n[*] Attribution and evidence")
         check_attribute_by_token(cli, beacons)
         check_attribute_miss(cli)
+        check_attribute_missing_field_error(cli)
         check_evidence(cli, file_id)
+        check_evidence_missing_error(cli)
 
         print("\n[*] Transparency log")
         check_tlog_head(cli)
