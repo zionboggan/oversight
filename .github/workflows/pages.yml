@@ -1,0 +1,47 @@
+name: Deploy Pages
+
+# GitHub's legacy branch builder for this repo stopped deploying after
+# 2026-05-26 (legacy Pages builds are being retired). This workflow takes over:
+# it publishes the contents of the gh-pages branch through actions/deploy-pages.
+#
+# Triggers:
+#   - workflow_dispatch: deploy on demand (gh workflow run pages.yml)
+#   - push to main touching this file: self-bootstraps the first deploy
+#
+# To publish after updating the site: push to gh-pages as before, then run
+#   gh workflow run pages.yml
+# (a push to gh-pages cannot auto-trigger a workflow that lives on main).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/pages.yml']
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the gh-pages site content
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+      - name: Strip non-site files from the artifact
+        run: rm -rf .git .github
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4
