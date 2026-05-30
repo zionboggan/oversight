@@ -19,6 +19,14 @@ VOLUME ["/data"]
 ENV OVERSIGHT_DB=/data/oversight-registry.sqlite
 ENV OVERSIGHT_DATA=/data
 
+# Run as an unprivileged user. /data is created and owned by the runtime user so
+# the volume is writable without root. A registry RCE then lands as uid 1000,
+# not root inside the container.
+RUN useradd --system --uid 1000 --create-home oversight \
+    && mkdir -p /data \
+    && chown -R oversight:oversight /data /app
+USER oversight
+
 EXPOSE 8765
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

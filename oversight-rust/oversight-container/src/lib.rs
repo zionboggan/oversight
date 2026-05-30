@@ -107,15 +107,30 @@ fn read_exact<'a>(
     n: usize,
     field: &'static str,
 ) -> Result<&'a [u8], ContainerError> {
-    if buf.len() < *at + n {
+    // Use checked arithmetic for the end offset. On 32-bit targets (e.g. armv7
+    // Android) `*at + n` can wrap when `n` comes from an attacker-controlled
+    // u32 length field, defeating the bounds check and panicking on the slice
+    // below. A wrap is, by definition, past the end of the buffer, so treat it
+    // as truncation.
+    let end = match at.checked_add(n) {
+        Some(end) => end,
+        None => {
+            return Err(ContainerError::Truncated {
+                wanted: n,
+                got: buf.len().saturating_sub(*at),
+                field,
+            });
+        }
+    };
+    if buf.len() < end {
         return Err(ContainerError::Truncated {
             wanted: n,
             got: buf.len().saturating_sub(*at),
             field,
         });
     }
-    let slice = &buf[*at..*at + n];
-    *at += n;
+    let slice = &buf[*at..end];
+    *at = end;
     Ok(slice)
 }
 
