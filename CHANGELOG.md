@@ -48,6 +48,11 @@
   now checks `/tlog/range` response shape plus representative
   `signature_invalid`, `sidecar_mismatch`, `missing_field`, and `not_found`
   error envelopes, raising the live/in-process harness to 38 checks.
+- **Registry v1 candidate stability note.** Added
+  `docs/REGISTRY_V1_STABILITY.md`, which names the candidate-frozen route
+  surface, JSON field families, error envelope, conformance gate, breaking
+  change rules, and remaining v1.0 burn-in gates for independent registry
+  operators.
 - **GitHub Actions runtime hygiene.** Main CI workflows opt into the GitHub
   Actions Node 24 runtime before the hosted runner default changes.
 - **Rust policy test parity.** Fixed the `oversight-policy` crate's manifest

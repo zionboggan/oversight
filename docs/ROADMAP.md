@@ -261,8 +261,10 @@ range behavior, with `leaf_data_hex` on newly appended local tlog records.
 Both registry implementations now return the registry v1 `{error: {code,
 message}}` envelope for representative client and server errors, and the
 conformance harness checks those envelopes.
-Remaining work: longer-running deployment tests and a wire-format stability
-declaration before declaring v1.0 ready.
+As of 2026-05-31, `docs/REGISTRY_V1_STABILITY.md` records the registry v1.0
+candidate wire-format freeze for operator burn-in. Remaining work:
+longer-running deployment tests and a final v1.0 release tag against that
+candidate profile.
 
 ---
 

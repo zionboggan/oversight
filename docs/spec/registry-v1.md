@@ -1,9 +1,10 @@
 # Oversight Registry v1 Interop Draft
 
-Status: draft; the wire format is not stable until Oversight v1.0. This
-document tracks the surface a second operator needs to implement to run
-a registry that the Python and Rust reference clients can treat as
-interchangeable with the origin deployment.
+Status: v1.0 candidate draft. The wire format is not final until the first
+Oversight v1.0 release tag, but the candidate-frozen compatibility surface is
+tracked in `docs/REGISTRY_V1_STABILITY.md`. This document tracks the surface a
+second operator needs to implement to run a registry that the Python and Rust
+reference clients can treat as interchangeable with the origin deployment.
 
 ## Goals
 

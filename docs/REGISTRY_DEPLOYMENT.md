@@ -151,6 +151,8 @@ for startup recovery and `/tlog/range`; newly appended records include
 Both reference registries return the registry v1 error envelope
 `{"error":{"code":"...","message":"..."}}` for registry failures, and the
 live conformance harness checks representative envelope codes.
+`docs/REGISTRY_V1_STABILITY.md` defines the candidate-frozen v1.0 route,
+field, and error-envelope surface that operators should burn in against.
 
 ## Rust Registry Burn-In Checklist
 
@@ -169,5 +171,6 @@ reference registry to the Rust Axum registry:
 7. Fetch `/.well-known/oversight-registry`, `/tlog/head`, `/tlog/range`,
    and at least one `/evidence/{file_id}` bundle, then verify the evidence
    bundle with an independent client.
-8. Keep the Python database and tlog as rollback artifacts until the Rust
+8. Compare the deployed surface with `docs/REGISTRY_V1_STABILITY.md`.
+9. Keep the Python database and tlog as rollback artifacts until the Rust
    service has completed the operator's burn-in window.

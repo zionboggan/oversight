@@ -110,10 +110,13 @@ silently skipped.
 The Python reference registry now has matching tlog recovery and range
 validation, including exact `leaf_data_hex` persistence for newly appended
 leaves.
+`docs/REGISTRY_V1_STABILITY.md` now records the registry v1.0 candidate
+wire-format freeze: the endpoint set, error envelope, canonicalization rules,
+sidecar authority rule, and conformance gate are the operator burn-in target.
 
 The next Rust-registry gate is operational burn-in: longer-running deployment
-tests against real operator databases and a final wire-format stability
-declaration before v1.0.
+tests against real operator databases and a final v1.0 release tag against the
+candidate profile.
 
 ## Quick start
 
