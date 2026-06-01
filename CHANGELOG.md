@@ -291,7 +291,7 @@ run. Formatters are pure; transport is a thin sink layer.
 
 ## v0.4.5 - 2026-04-20 L3 safety, GUI, and registry federation docs
 
-Review-driven hardening from `P:/Oversight/oversight-protocol-review.md`.
+Review-driven hardening from the local security review report.
 
 - `oversight_core/l3_policy.py`: new L3 safety policy engine. L3 defaults off
   for legal, regulatory, technical/spec, source-code, SQL, log, and structured
