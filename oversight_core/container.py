@@ -32,6 +32,8 @@ import io
 import json
 import struct
 from dataclasses import dataclass
+
+from .jcs import jcs_dumps
 from typing import Optional
 
 from . import crypto
@@ -82,9 +84,7 @@ class SealedFile:
         buf.write(struct.pack(">I", len(manifest_json)))
         buf.write(manifest_json)
 
-        wrapped_json = json.dumps(
-            self.wrapped_dek, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        wrapped_json = jcs_dumps(self.wrapped_dek)
         buf.write(struct.pack(">I", len(wrapped_json)))
         buf.write(wrapped_json)
 

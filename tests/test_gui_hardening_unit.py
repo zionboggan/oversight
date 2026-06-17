@@ -15,7 +15,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from cli import gui
+try:
+    import tkinter  # noqa: F401
+except ImportError:
+    tkinter = None
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    tkinter is None, reason="python3-tk not installed; GUI tests skipped"
+)
+
+if tkinter is not None:
+    from cli import gui  # noqa: E402
+
 from oversight_core import ClassicIdentity, Manifest, Recipient, content_hash, seal
 from oversight_core.container import SealedFile
 from oversight_core.safe_io import is_private_key_file, validate_output_path
@@ -49,7 +62,7 @@ def _sealed_blob() -> bytes:
     return seal(plaintext, manifest, issuer.ed25519_priv, recipient.x25519_pub)
 
 
-def t1_private_key_outputs_are_blocked():
+def test_private_key_outputs_are_blocked():
     with tempfile.TemporaryDirectory() as td:
         key_path = Path(td) / "alice.priv.json"
         key_path.write_text(json.dumps(_identity_dict()), encoding="utf-8")
@@ -63,7 +76,7 @@ def t1_private_key_outputs_are_blocked():
     print("  [PASS] private key output targets are hard-blocked")
 
 
-def t2_same_path_outputs_are_blocked():
+def test_same_path_outputs_are_blocked():
     with tempfile.TemporaryDirectory() as td:
         input_path = Path(td) / "source.txt"
         input_path.write_text("source", encoding="utf-8")
@@ -76,7 +89,7 @@ def t2_same_path_outputs_are_blocked():
     print("  [PASS] output paths cannot equal input paths")
 
 
-def t3_windows_reserved_names_are_rejected():
+def test_windows_reserved_names_are_rejected():
     try:
         validate_output_path(Path("NUL.priv.json"))
     except ValueError as exc:
@@ -86,7 +99,7 @@ def t3_windows_reserved_names_are_rejected():
     print("  [PASS] Windows reserved output names are rejected")
 
 
-def t4_gui_key_shape_errors_are_friendly():
+def test_gui_key_shape_errors_are_friendly():
     with tempfile.TemporaryDirectory() as td:
         pub_path = Path(td) / "alice.pub.json"
         pub_path.write_text(json.dumps({"id": "alice", "x25519_pub": "00" * 32}), encoding="utf-8")
@@ -99,12 +112,12 @@ def t4_gui_key_shape_errors_are_friendly():
     print("  [PASS] key-shape mistakes get actionable GUI errors")
 
 
-def t5_gui_registry_domain_uses_user_url():
+def test_gui_registry_domain_uses_user_url():
     assert gui._registry_domain("https://registry.example.test:8443/api") == "registry.example.test:8443"
     print("  [PASS] GUI beacon domain derives from the configured registry URL")
 
 
-def t6_container_rejects_suite_id_tamper():
+def test_container_rejects_suite_id_tamper():
     blob = bytearray(_sealed_blob())
     blob[7] ^= 0x01
     try:
@@ -116,7 +129,7 @@ def t6_container_rejects_suite_id_tamper():
     print("  [PASS] unauthenticated suite_id tamper is rejected")
 
 
-def t7_container_rejects_trailing_bytes():
+def test_container_rejects_trailing_bytes():
     try:
         SealedFile.from_bytes(_sealed_blob() + b"junk")
     except ValueError as exc:
@@ -130,16 +143,19 @@ def main():
     print("=" * 60)
     print("  GUI/CLI hardening - focused unit tests")
     print("=" * 60)
-    t1_private_key_outputs_are_blocked()
-    t2_same_path_outputs_are_blocked()
-    t3_windows_reserved_names_are_rejected()
-    t4_gui_key_shape_errors_are_friendly()
-    t5_gui_registry_domain_uses_user_url()
-    t6_container_rejects_suite_id_tamper()
-    t7_container_rejects_trailing_bytes()
+    test_private_key_outputs_are_blocked()
+    test_same_path_outputs_are_blocked()
+    test_windows_reserved_names_are_rejected()
+    test_gui_key_shape_errors_are_friendly()
+    test_gui_registry_domain_uses_user_url()
+    test_container_rejects_suite_id_tamper()
+    test_container_rejects_trailing_bytes()
     print()
     print("  ALL TESTS PASSED - 7/7")
 
 
 if __name__ == "__main__":
-    main()
+    if tkinter is None:
+        print("python3-tk not installed; GUI tests skipped")
+    else:
+        main()

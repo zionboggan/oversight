@@ -21,6 +21,7 @@ oversight-rekor = { path = "../oversight-rekor", features = ["upload"] }
 serde.workspace = true
 serde_json.workspace = true
 serde_jcs.workspace = true
+subtle.workspace = true
 hex.workspace = true
 thiserror.workspace = true
 ed25519-dalek.workspace = true

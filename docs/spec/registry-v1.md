@@ -35,20 +35,25 @@ reference clients can treat as interchangeable with the origin deployment.
 ### Canonicalization
 
 The manifest signature is computed over a canonical JSON serialization
-with the following exact rules. Implementations that deviate cannot
-verify manifests produced by the reference client.
+per RFC 8785 (JSON Canonicalization Scheme, "JCS"). Implementations that
+deviate cannot verify manifests produced by the reference client.
 
-1. Serialize the manifest dictionary with recursively sorted keys.
-2. Use the separators `","` and `":"` with no whitespace.
-3. Encode the resulting string as UTF-8 before feeding it to the
+1. Keys are sorted recursively by UTF-16 code unit (RFC 8785 §3.2.3).
+2. String values are emitted as raw UTF-8 with only the mandatory JCS
+   escapes (`"`, `\`, and `U+0000`-`U+001F`); non-ASCII characters are
+   NOT escaped as `\uXXXX`.
+3. Separators are `","` and `":"` with no whitespace.
+4. The serialized string is encoded as UTF-8 before being fed to the
    Ed25519 verifier.
-4. The `signature_ed25519` field is stripped before canonicalization
+5. The `signature_ed25519` field is stripped before canonicalization
    and re-attached to the signed object before it is wire-transmitted.
 
-In Python the canonical form matches
-`json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")`.
-In Rust the reference implementation uses the `canonical_json` crate
-with identical output. The cross-language conformance suite pins this.
+In Python the canonical form is produced by
+`oversight_core.jcs.jcs_dumps(manifest)`. In Rust the reference uses
+`serde_jcs::to_vec` with identical output. The cross-language conformance
+suite (`oversight-rust/tests/conformance_cross_lang.sh`) pins this with
+both an ASCII baseline and a non-ASCII `recipient_id` round trip that
+would diverge under any non-JCS serialization.
 
 ### Signature verification
 

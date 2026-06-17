@@ -114,6 +114,8 @@ def build_in_process_client():
     os.environ["OVERSIGHT_DATA_DIR"] = tmp
     # Rekor off by default so the harness does not touch the public log.
     os.environ.setdefault("OVERSIGHT_REKOR_ENABLED", "0")
+    # This harness exercises registry logic, not operator auth.
+    os.environ.setdefault("OVERSIGHT_AUTH_DISABLED", "1")
     # Require the DNS secret to exercise the non-loopback fail-closed path.
     os.environ["OVERSIGHT_DNS_EVENT_SECRET"] = "test-dns-secret-123"
 
@@ -427,6 +429,33 @@ def main() -> None:
     finally:
         if tmp and os.path.isdir(tmp):
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_registry_v1_conformance_harness() -> None:
+    """Pytest entry point for the registry v1 conformance harness.
+
+    The harness is intentionally a single pytest case: the checks share state
+    (the registered file_id drives the subsequent attribution, evidence, tlog,
+    and beacon checks) and the question under test is one yes/no question,
+    "does this registry meet v1 conformance?" Per-check pass/fail is still
+    printed to stdout so a CI log is a compact conformance report.
+    """
+    PASSED.clear()
+    FAILED.clear()
+    url = os.environ.get("OVERSIGHT_REGISTRY_URL", "").strip()
+    tmp = None
+    try:
+        if url:
+            cli, tmp, _ = build_live_client(url)
+        else:
+            cli, tmp, _ = build_in_process_client()
+        run(cli)
+    finally:
+        if tmp and os.path.isdir(tmp):
+            shutil.rmtree(tmp, ignore_errors=True)
+    assert not FAILED, f"{len(FAILED)} conformance check(s) failed: " + ", ".join(
+        name for name, _ in FAILED
+    )
 
 
 if __name__ == "__main__":

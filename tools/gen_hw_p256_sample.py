@@ -67,8 +67,11 @@ def xchacha20poly1305_encrypt(key: bytes, nonce24: bytes, plaintext: bytes, aad:
     return ChaCha20Poly1305(subkey).encrypt(nonce12, plaintext, aad)
 
 
+# RFC 8785 JCS; byte-exact match with serde_jcs and oversight_core.jcs.jcs_dumps.
+# Standalone form (no oversight_core import): sort_keys + ensure_ascii=False is
+# byte-identical to JCS for the no-floats subset this tool emits.
 def canonical_bytes(obj: dict) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
 def strip_none(obj):

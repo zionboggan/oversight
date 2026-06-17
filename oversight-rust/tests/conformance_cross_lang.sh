@@ -107,6 +107,79 @@ cargo run --manifest-path $RUST_CARGO --release -q -- inspect \
   --input python-sealed.bin 2>&1 | grep -E "(signature valid|suite|OVERSIGHT)" | head -5
 
 echo ""
+echo "=== 4. Non-ASCII recipient_id round trip (the JCS divergence case) ==="
+# Pre-JCS-port this failed: Python emitted {"recipient_id":"Zi\u00f3n@org"}
+# (ensure_ascii=True) while Rust emitted {"recipient_id":"Zión@org"} (raw
+# UTF-8). The two signatures covered different bytes, so a Rust-sealed file
+# with a non-ASCII recipient_id failed Python Manifest.verify() and vice
+# versa. After the RFC 8785 JCS unification, both sides serialize to raw
+# UTF-8 and the signatures agree.
+UNICODE_RECIPIENT='Zión@org'
+
+cargo run --manifest-path $RUST_CARGO --release -q -- seal \
+  --input plaintext.txt --output rust-unicode-sealed.bin \
+  --issuer issuer.json --recipient-pub "$ALICE_X_PUB" \
+  --recipient-id "$UNICODE_RECIPIENT" --registry "https://reg.test" 2>&1 | tail -3
+
+python3 <<PYEOF
+import sys
+sys.path.insert(0, '$PYTHON_ROOT')
+from oversight_core.container import open_sealed, SealedFile
+blob = open('rust-unicode-sealed.bin', 'rb').read()
+priv = bytes.fromhex('$ALICE_X_PRIV')
+plaintext, manifest = open_sealed(blob, priv)
+assert manifest.verify(), (
+    "Python Manifest.verify() of Rust-sealed file with non-ASCII recipient_id "
+    "FAILED. This is the JCS divergence: Python and Rust are computing "
+    "different canonical bytes for the same manifest."
+)
+assert manifest.recipient.recipient_id == '$UNICODE_RECIPIENT', (
+    f"recipient_id mismatch: got {manifest.recipient.recipient_id!r}"
+)
+print(f"  ✓ Python verifies Rust-sealed manifest with recipient_id={manifest.recipient.recipient_id!r}")
+PYEOF
+
+python3 <<PYEOF
+import sys
+sys.path.insert(0, '$PYTHON_ROOT')
+from oversight_core import ClassicIdentity, content_hash
+from oversight_core.manifest import Manifest, Recipient
+from oversight_core.container import seal
+
+alice_pub = bytes.fromhex('$ALICE_X_PUB')
+issuer_priv = bytes.fromhex('$ISSUER_ED_PRIV')
+issuer_pub = bytes.fromhex('$ISSUER_ED_PUB')
+
+plaintext = open('plaintext.txt', 'rb').read()
+m = Manifest.new(
+    original_filename='plaintext.txt',
+    content_hash=content_hash(plaintext),
+    size_bytes=len(plaintext),
+    issuer_id='cross-test',
+    issuer_ed25519_pub_hex=issuer_pub.hex(),
+    recipient=Recipient(recipient_id='$UNICODE_RECIPIENT', x25519_pub=alice_pub.hex()),
+    registry_url='https://reg.test',
+    content_type='text/plain',
+)
+blob = seal(plaintext, m, issuer_priv, alice_pub)
+open('python-unicode-sealed.bin', 'wb').write(blob)
+assert m.verify(), "Python cannot verify its own signature on a non-ASCII manifest"
+print(f"  ✓ Python signed manifest with non-ASCII recipient_id, self-verify OK")
+PYEOF
+
+cargo run --manifest-path $RUST_CARGO --release -q -- open \
+  --input python-unicode-sealed.bin --output rust-unicode-recovered.txt --recipient alice.json 2>&1 | tail -3
+
+diff plaintext.txt rust-unicode-recovered.txt && echo "  ✓ Rust opens Python-sealed non-ASCII manifest, plaintext matches"
+
+cargo run --manifest-path $RUST_CARGO --release -q -- inspect \
+  --input python-unicode-sealed.bin 2>&1 | grep -E "signature valid" | head -1
+
+echo ""
+echo "=== 5. Hybrid (OSGT-HYBRID-v1) ML-KEM-768 KEM, Python <-> Rust ==="
+PYTHONPATH="$REPO_ROOT:$PYTHONPATH" python3 "$REPO_ROOT/oversight-rust/tests/conformance_hybrid_kem.py"
+
+echo ""
 echo "=========================================="
 echo "  CROSS-LANGUAGE CONFORMANCE: ALL PASS"
 echo "=========================================="

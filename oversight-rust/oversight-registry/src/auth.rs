@@ -1,5 +1,6 @@
 use axum::http::{header, HeaderMap};
 use oversight_manifest::Manifest;
+use subtle::ConstantTimeEq;
 
 use crate::error::{RegistryError, Result as RegistryResult};
 
@@ -50,14 +51,7 @@ pub fn require_optional_token(
 }
 
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (&x, &y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+    bool::from(a.ct_eq(b))
 }
 
 pub fn verify_manifest_signature(manifest_value: &serde_json::Value) -> (bool, String) {
@@ -181,5 +175,44 @@ mod tests {
             require_optional_token(Some("wrong"), &headers, "x-test-token", "operator"),
             Err(RegistryError::Unauthorized(_))
         ));
+    }
+
+    #[test]
+    fn constant_time_eq_accepts_equal_inputs_across_lengths() {
+        assert!(constant_time_eq(b"", b""));
+        assert!(constant_time_eq(b"a", b"a"));
+        assert!(constant_time_eq(
+            b"operator-token-32-bytes-long-xxxx",
+            b"operator-token-32-bytes-long-xxxx"
+        ));
+        assert!(constant_time_eq(&[0u8; 128], &[0u8; 128]));
+    }
+
+    #[test]
+    fn constant_time_eq_rejects_same_length_different_content() {
+        assert!(!constant_time_eq(b"a", b"b"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(
+            b"operator-token-32-bytes-long-xxxx",
+            b"operator-token-32-bytes-long-yyyy"
+        ));
+    }
+
+    #[test]
+    fn constant_time_eq_rejects_mismatched_lengths_without_early_return() {
+        assert!(!constant_time_eq(b"", b"a"));
+        assert!(!constant_time_eq(b"a", b""));
+        assert!(!constant_time_eq(b"short", b"longer-string"));
+        assert!(!constant_time_eq(b"longer-string", b"short"));
+    }
+
+    #[test]
+    fn constant_time_eq_rejects_single_bit_difference() {
+        let mut a = vec![0u8; 32];
+        let mut b = vec![0u8; 32];
+        b[15] = 0x01;
+        assert!(!constant_time_eq(&a, &b));
+        a[15] = 0x01;
+        assert!(constant_time_eq(&a, &b));
     }
 }

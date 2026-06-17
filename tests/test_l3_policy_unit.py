@@ -14,7 +14,7 @@ def ok(msg: str) -> None:
     print(f"  [PASS] {msg}")
 
 
-def t1_risky_documents_default_l3_off():
+def test_risky_documents_default_l3_off():
     text = "The system MUST verify every request. SELECT * FROM users;"
     decision = l3_policy.decide_l3(
         filename="api-spec.md",
@@ -27,7 +27,7 @@ def t1_risky_documents_default_l3_off():
     ok("technical/spec content disables L3 by default")
 
 
-def t2_full_l3_requires_ack_metadata():
+def test_full_l3_requires_ack_metadata():
     decision = l3_policy.decide_l3(
         filename="brief.txt",
         content_type="text/plain",
@@ -40,7 +40,7 @@ def t2_full_l3_requires_ack_metadata():
     ok("explicit full L3 returns acknowledgement-required decision")
 
 
-def t3_safe_l3_preserves_protected_lines():
+def test_safe_l3_preserves_protected_lines():
     mark_id = watermark.new_mark_id()
     original = (
         "The Vendor MUST provide 5 kg by Friday.\n"
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     print("=" * 60)
     print("oversight_core.l3_policy - focused unit tests")
     print("=" * 60)
-    t1_risky_documents_default_l3_off()
-    t2_full_l3_requires_ack_metadata()
-    t3_safe_l3_preserves_protected_lines()
+    test_risky_documents_default_l3_off()
+    test_full_l3_requires_ack_metadata()
+    test_safe_l3_preserves_protected_lines()
     print("\n  ALL TESTS PASSED - 3/3")

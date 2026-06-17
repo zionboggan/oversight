@@ -15,6 +15,7 @@ from oversight_core import (
     content_hash, seal, open_sealed, beacon, watermark,
 )
 from oversight_core import semantic
+from oversight_core.jcs import jcs_dumps
 
 REG = "http://127.0.0.1:8765"
 
@@ -136,7 +137,7 @@ def main():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(bundle["registry_pub"]))
     sig = bytes.fromhex(bundle.pop("bundle_signature_ed25519"))
-    msg = json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    msg = jcs_dumps(bundle)
     try:
         pub.verify(sig, msg)
         print("  [ok] bundle signature VERIFIED — this bundle came from this registry.")

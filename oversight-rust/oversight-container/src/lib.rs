@@ -311,27 +311,7 @@ pub fn open_sealed(
         }
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    if let Some(na) = sf.manifest.policy.get("not_after").and_then(|v| v.as_i64()) {
-        if now > na {
-            return Err(ContainerError::Precondition("file expired (not_after)"));
-        }
-    }
-    if let Some(nb) = sf
-        .manifest
-        .policy
-        .get("not_before")
-        .and_then(|v| v.as_i64())
-    {
-        if now < nb {
-            return Err(ContainerError::Precondition(
-                "file not yet released (not_before)",
-            ));
-        }
-    }
+    oversight_policy::check_policy(&sf.manifest, policy_ctx)?;
 
     let dek = if let Some(slots) = sf.wrapped_dek.get("slots").and_then(|v| v.as_array()) {
         let mut recovered = None;
@@ -454,27 +434,7 @@ pub fn open_sealed_with_provider(
         }
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    if let Some(na) = sf.manifest.policy.get("not_after").and_then(|v| v.as_i64()) {
-        if now > na {
-            return Err(ContainerError::Precondition("file expired (not_after)"));
-        }
-    }
-    if let Some(nb) = sf
-        .manifest
-        .policy
-        .get("not_before")
-        .and_then(|v| v.as_i64())
-    {
-        if now < nb {
-            return Err(ContainerError::Precondition(
-                "file not yet released (not_before)",
-            ));
-        }
-    }
+    oversight_policy::check_policy(&sf.manifest, policy_ctx)?;
 
     let dek = match (sf.suite_id, provider.algorithm()) {
         (SUITE_CLASSIC_V1_ID, KeyAlgorithm::X25519) => {
@@ -862,9 +822,104 @@ mod tests {
         )
         .unwrap();
         match open_sealed(&blob, alice.x25519_priv.as_ref(), None, None) {
-            Err(ContainerError::Precondition("file expired (not_after)")) => (),
-            other => panic!("expected expiry error, got {:?}", other.is_ok()),
+            Err(ContainerError::Policy(err)) => assert!(
+                err.to_string().contains("expired"),
+                "expected expiry violation, got: {err}"
+            ),
+            other => panic!("expected Policy expiry error, got {:?}", other.is_ok()),
         }
+    }
+
+    #[test]
+    fn jurisdiction_mismatch_rejected_in_open_sealed() {
+        let issuer = ClassicIdentity::generate();
+        let alice = ClassicIdentity::generate();
+        let plaintext = b"region-locked";
+        let mut m = make_manifest(&issuer, &alice, plaintext);
+        m.policy["jurisdiction"] = serde_json::json!("EU");
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
+
+        let ctx = PolicyContext::default().with_jurisdiction("US");
+        match open_sealed(&blob, alice.x25519_priv.as_ref(), None, Some(&ctx)) {
+            Err(ContainerError::Policy(err)) => assert!(
+                err.to_string().contains("Jurisdiction mismatch"),
+                "expected jurisdiction violation, got: {err}"
+            ),
+            other => panic!(
+                "expected Policy jurisdiction error, got ok={:?}",
+                other.is_ok()
+            ),
+        }
+    }
+
+    #[test]
+    fn jurisdiction_match_allows_open() {
+        let issuer = ClassicIdentity::generate();
+        let alice = ClassicIdentity::generate();
+        let plaintext = b"region-locked";
+        let mut m = make_manifest(&issuer, &alice, plaintext);
+        m.policy["jurisdiction"] = serde_json::json!("EU");
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
+
+        let ctx = PolicyContext::default().with_jurisdiction("EU");
+        let opened = open_sealed(&blob, alice.x25519_priv.as_ref(), None, Some(&ctx));
+        assert!(
+            opened.is_ok(),
+            "matching jurisdiction must open: {:?}",
+            opened.err()
+        );
+    }
+
+    #[test]
+    fn jurisdiction_global_allows_open() {
+        let issuer = ClassicIdentity::generate();
+        let alice = ClassicIdentity::generate();
+        let plaintext = b"global-default";
+        let mut m = make_manifest(&issuer, &alice, plaintext);
+        m.policy["jurisdiction"] = serde_json::json!("GLOBAL");
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
+
+        let ctx = PolicyContext::default();
+        assert!(open_sealed(&blob, alice.x25519_priv.as_ref(), None, Some(&ctx)).is_ok());
+    }
+
+    #[test]
+    fn jurisdiction_skipped_when_no_ctx_supplied() {
+        let issuer = ClassicIdentity::generate();
+        let alice = ClassicIdentity::generate();
+        let plaintext = b"region-locked";
+        let mut m = make_manifest(&issuer, &alice, plaintext);
+        m.policy["jurisdiction"] = serde_json::json!("EU");
+        let blob = seal(
+            plaintext,
+            &mut m,
+            issuer.ed25519_priv.as_ref(),
+            &alice.x25519_pub,
+        )
+        .unwrap();
+
+        // Parity with oversight_core.policy.check_policy: a non-GLOBAL
+        // jurisdiction is not enforced when no context is supplied. This is
+        // the raw-open path used by the cross-language conformance harness.
+        assert!(open_sealed(&blob, alice.x25519_priv.as_ref(), None, None).is_ok());
     }
 
     #[test]

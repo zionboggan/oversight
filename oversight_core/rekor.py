@@ -32,6 +32,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from oversight_core.jcs import jcs_dumps
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -127,15 +129,13 @@ class DSSEEnvelope:
     signatures: list[dict]  # [{"sig": "<b64>", "keyid": "<hex>"}, ...]
 
     def to_json(self) -> str:
-        return json.dumps(
+        return jcs_dumps(
             {
                 "payload": self.payload_b64,
                 "payloadType": self.payload_type,
                 "signatures": self.signatures,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+            }
+        ).decode("utf-8")
 
     @classmethod
     def from_json(cls, raw: str) -> "DSSEEnvelope":
@@ -202,7 +202,7 @@ def sign_dsse(
     ``keyid`` is opaque per spec; convention is the hex SHA-256 of the public
     key. Empty string is allowed and used in tests.
     """
-    payload = json.dumps(statement, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    payload = jcs_dumps(statement)
     payload_b64 = base64.b64encode(payload).decode("ascii")
     pae = _pae(DSSE_PAYLOAD_TYPE, payload)
     sk = Ed25519PrivateKey.from_private_bytes(issuer_ed25519_priv)

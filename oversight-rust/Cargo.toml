@@ -18,7 +18,7 @@ exclude = ["fuzz"]
 [workspace.package]
 version = "0.5.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 license = "Apache-2.0"
 repository = "https://github.com/oversight-protocol/oversight"
 authors = ["Oversight contributors"]
@@ -36,6 +36,9 @@ chacha20poly1305 = { version = "0.10", features = ["alloc"] }
 hkdf = "0.12"
 sha2 = "0.10"
 rand_core = "0.6.2"
+# ML-KEM-768 (FIPS 203) for the OSGT-HYBRID-v1 key-encapsulation half.
+# Pure Rust, RustCrypto-published, no C build (liboqs would need cmake).
+ml-kem = "0.3"
 
 # Serialization / encoding
 serde = { version = "1", features = ["derive"] }
@@ -50,6 +53,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # For canonical JSON
 serde_jcs = "0.1"
+
+# Constant-time primitives (token comparison, Choice-based bool handling).
+# Already a transitive dep via ed25519-dalek / chacha20poly1305; declared
+# explicitly so auth code can rely on it without going through another crate.
+subtle = "2"
 
 [profile.release]
 opt-level = 3

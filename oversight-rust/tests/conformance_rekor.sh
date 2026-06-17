@@ -20,7 +20,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$ROOT/.." && pwd)"
-HELPER_BIN="$ROOT/target/release/examples/conformance_helper"
+# Respect CARGO_TARGET_DIR so the script works for out-of-tree builds
+# (CI runners, noexec source mounts). Falls back to in-tree $ROOT/target.
+TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
+HELPER_BIN="$TARGET_DIR/release/examples/conformance_helper"
 
 cd "$ROOT"
 echo "==> building conformance helper..."

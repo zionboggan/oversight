@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from oversight_core.tlog import TransparencyLog
 from oversight_core.manifest import Manifest
 from oversight_core import rekor as rekor_mod
+from oversight_core.jcs import jcs_dumps
 
 
 DB_PATH = Path(os.environ.get("OVERSIGHT_DB", "/tmp/oversight-registry.sqlite"))
@@ -51,6 +52,9 @@ TRUSTED_PROXY = bool(int(os.environ.get("TRUSTED_PROXY", "0")))
 # When TRUSTED_PROXY=1, honor X-Forwarded-For for rate limiting.
 DNS_EVENT_SECRET = os.environ.get("OVERSIGHT_DNS_EVENT_SECRET", "")
 OPERATOR_TOKEN = os.environ.get("OVERSIGHT_OPERATOR_TOKEN", "").strip()
+# When set to "1", the registry boots without an operator token. Local dev /
+# isolated testing only; never set this in production.
+AUTH_DISABLED = os.environ.get("OVERSIGHT_AUTH_DISABLED", "").strip() == "1"
 
 # Rekor v2 wiring (v0.5 Session B). Off by default so existing tests do not
 # generate live network traffic. Set OVERSIGHT_REKOR_ENABLED=1 to opt in.
@@ -225,22 +229,60 @@ class TokenBucket:
 BUCKET = TokenBucket(rate=10.0, burst=30, max_keys=100_000)
 
 
+def _xff_client(xff: str) -> str | None:
+    """Return the trusted client IP from an X-Forwarded-For header value.
+
+    The directly-connected proxy (Caddy) appends the real client as the
+    RIGHTMOST entry. Entries to its left are attacker-controlled: a client
+    may send any XFF header and the proxy appends rather than replaces, so
+    the leftmost entry must never be trusted for rate-limit bucketing or for
+    the source_ip written into beacon events. Taking the leftmost let an
+    attacker pick their rate-limit bucket and forge attribution.
+    """
+    parts = [p.strip() for p in xff.split(",") if p.strip()]
+    return parts[-1] if parts else None
+
+
 def _client_key(request: Request) -> str:
     """Extract the client identifier used for rate limiting."""
     if TRUSTED_PROXY:
         xff = request.headers.get("x-forwarded-for", "")
-        if xff:
-            # Last hop is the most recent proxy, first is the original client.
-            # For rate limiting the original client IP is what we want.
-            return xff.split(",")[0].strip()
+        client = _xff_client(xff) if xff else None
+        if client:
+            return client
     return request.client.host if request.client else "unknown"
 
 
 # ---- app + lifespan ----
 
+def _enforce_auth_config():
+    """Fail closed at boot.
+
+    Without an operator token the public write endpoints (/register,
+    /attribute) would let anyone self-sign manifests into the append-only
+    tlog and enumerate attribution over /attribute. Refuse to start in that
+    state unless the operator has explicitly opted out with
+    OVERSIGHT_AUTH_DISABLED=1 (intended for isolated local testing only).
+    """
+    if not OPERATOR_TOKEN and not AUTH_DISABLED:
+        raise RuntimeError(
+            "OVERSIGHT_OPERATOR_TOKEN is required to start the registry. "
+            "Set it to a strong random value, or set OVERSIGHT_AUTH_DISABLED=1 "
+            "only for isolated local testing."
+        )
+    if not OPERATOR_TOKEN and AUTH_DISABLED:
+        import warnings
+        warnings.warn(
+            "OVERSIGHT_AUTH_DISABLED=1: registry is running without operator "
+            "authentication. Do NOT do this in production.",
+            stacklevel=2,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global IDENTITY, TLOG
+    _enforce_auth_config()
     init_db()
     IDENTITY = load_or_create_identity()
     TLOG = TransparencyLog(TLOG_DIR, signing_key_hex=IDENTITY["ed25519_priv"])
@@ -496,9 +538,7 @@ def _verify_manifest_signature(manifest_dict: dict) -> tuple[bool, str]:
     Returns (ok, issuer_pub_hex). issuer_pub_hex is the claimed issuer key.
     """
     try:
-        m = Manifest.from_json(
-            json.dumps(manifest_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        )
+        m = Manifest.from_json(jcs_dumps(manifest_dict))
     except Exception as e:
         return False, ""
     return m.verify(), m.issuer_ed25519_pub
@@ -507,7 +547,7 @@ def _verify_manifest_signature(manifest_dict: dict) -> tuple[bool, str]:
 def _canonical_items(items: list[dict]) -> list[str]:
     """Normalize registration sidecars for exact signed-manifest comparison."""
     return sorted(
-        json.dumps(item, sort_keys=True, separators=(",", ":"))
+        jcs_dumps(item).decode("utf-8")
         for item in items
     )
 
@@ -783,7 +823,7 @@ def evidence_bundle(file_id: str):
         ),
     }
     sk = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(IDENTITY["ed25519_priv"]))
-    msg = json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    msg = jcs_dumps(bundle)
     bundle["bundle_signature_ed25519"] = sk.sign(msg).hex()
     return bundle
 

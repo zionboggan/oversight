@@ -144,11 +144,13 @@ pub fn timestamp_stub() -> String {
 fn client_key(headers: &HeaderMap, addr: Option<&SocketAddr>, trusted_proxy: bool) -> String {
     if trusted_proxy {
         if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-            if let Some(first) = xff.split(',').next() {
-                let trimmed = first.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
+            let parts: Vec<&str> = xff
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if let Some(last) = parts.last() {
+                return last.to_string();
             }
         }
     }
@@ -361,6 +363,11 @@ async fn main() -> anyhow::Result<()> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
+    let auth_disabled = std::env::var("OVERSIGHT_AUTH_DISABLED")
+        .unwrap_or_default()
+        .trim()
+        == "1";
+
     let rekor_url = std::env::var("OVERSIGHT_REKOR_URL")
         .unwrap_or_else(|_| oversight_rekor::DEFAULT_REKOR_URL.to_string());
 
@@ -411,6 +418,17 @@ async fn main() -> anyhow::Result<()> {
         trusted_proxy = trusted_proxy,
         "transparency log initialized"
     );
+
+    if operator_token.is_none() && !auth_disabled {
+        return Err(anyhow::anyhow!(
+            "OVERSIGHT_OPERATOR_TOKEN is required to start the registry. Set it to a strong random value, or set OVERSIGHT_AUTH_DISABLED=1 only for isolated local testing."
+        ));
+    }
+    if operator_token.is_none() && auth_disabled {
+        tracing::warn!(
+            "OVERSIGHT_AUTH_DISABLED=1: registry is running without operator authentication. Do NOT do this in production."
+        );
+    }
 
     let state = Arc::new(AppState {
         db: pool,
@@ -500,5 +518,50 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => { tracing::info!("received Ctrl+C, shutting down"); }
         _ = terminate => { tracing::info!("received SIGTERM, shutting down"); }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn xff_headers(value: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-for", HeaderValue::from_str(value).unwrap());
+        h
+    }
+
+    #[test]
+    fn xff_ignores_spoofed_left_entries() {
+        let h = xff_headers("1.2.3.4, 9.9.9.9");
+        assert_eq!(client_key(&h, None, true), "9.9.9.9");
+        let h = xff_headers("fake, fake2, 203.0.113.7");
+        assert_eq!(client_key(&h, None, true), "203.0.113.7");
+    }
+
+    #[test]
+    fn xff_single_entry_is_returned() {
+        let h = xff_headers("9.9.9.9");
+        assert_eq!(client_key(&h, None, true), "9.9.9.9");
+    }
+
+    #[test]
+    fn xff_whitespace_only_entries_dropped() {
+        let h = xff_headers(" , , 9.9.9.9");
+        assert_eq!(client_key(&h, None, true), "9.9.9.9");
+    }
+
+    #[test]
+    fn xff_empty_falls_back_to_addr() {
+        let h = xff_headers("");
+        let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
+        assert_eq!(client_key(&h, Some(&addr), true), "127.0.0.1");
+    }
+
+    #[test]
+    fn no_trusted_proxy_ignores_xff_and_uses_addr() {
+        let h = xff_headers("9.9.9.9");
+        let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
+        assert_eq!(client_key(&h, Some(&addr), false), "127.0.0.1");
     }
 }

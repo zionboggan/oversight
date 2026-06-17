@@ -33,6 +33,8 @@ from typing import Optional
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from .jcs import jcs_dumps
+
 
 def _h(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
@@ -149,9 +151,7 @@ class TransparencyLog:
     def append(self, leaf_data: bytes | str | dict) -> int:
         """Append a leaf. Durable: fsync before return."""
         if isinstance(leaf_data, dict):
-            leaf_bytes = json.dumps(
-                leaf_data, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
+            leaf_bytes = jcs_dumps(leaf_data)
         elif isinstance(leaf_data, str):
             leaf_bytes = leaf_data.encode("utf-8")
         else:
@@ -203,7 +203,7 @@ class TransparencyLog:
         size = self.size()
         root = self.root()
         head = {"size": size, "root": root.hex()}
-        msg = json.dumps(head, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        msg = jcs_dumps(head)
         if self._sk:
             sig = self._sk.sign(msg)
             head["signature"] = sig.hex()

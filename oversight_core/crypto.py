@@ -46,7 +46,15 @@ from nacl.bindings import (
 
 # Try to detect PQ availability
 try:
-    import oqs  # type: ignore
+    import contextlib
+    import os as _os
+
+    # liboqs-python attaches a StreamHandler(sys.stdout) and logs an INFO line
+    # at import time, which contaminates stdout for any caller that imports us
+    # (and breaks byte-identity conformance capture). Suppress it during import.
+    with open(_os.devnull, "w") as _devnull:
+        with contextlib.redirect_stdout(_devnull):
+            import oqs  # type: ignore
 
     PQ_AVAILABLE = True
 except Exception:

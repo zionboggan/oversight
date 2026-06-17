@@ -320,4 +320,47 @@ mod tests {
         let parsed: Manifest = serde_json::from_value(value).unwrap();
         assert!(parsed.verify().unwrap());
     }
+
+    // RFC 8785 JCS byte-vector pin. Mirrors tests/test_jcs_canonical_unit.py
+    // so both sides of the cross-language conformance suite anchor the same
+    // canonical bytes. If serde_jcs ever changes behavior, this test and the
+    // Python peer fail together and the divergence is visible at review time.
+    #[test]
+    fn jcs_byte_vectors_match_python_peer() {
+        // Non-ASCII string value: the central regression. Pre-JCS-port the
+        // Python peer emitted b"{\"name\":\"caf\\u00e9\"}" here (ensure_ascii).
+        let v = serde_json::json!({"name": "café"});
+        assert_eq!(
+            serde_jcs::to_vec(&v).unwrap(),
+            b"{\"name\":\"caf\xc3\xa9\"}"
+        );
+
+        // CJK: 日 = U+65E5 -> E6 97 A5, 本 = U+672C -> E6 9C AC
+        let v = serde_json::json!({"k": "日本"});
+        assert_eq!(
+            serde_jcs::to_vec(&v).unwrap(),
+            b"{\"k\":\"\xe6\x97\xa5\xe6\x9c\xac\"}"
+        );
+
+        // Supplementary plane (surrogate pair in UTF-16): 𝄞 = U+1D11E -> F0 9D 84 9E
+        let v = serde_json::json!({"k": "𝄞"});
+        assert_eq!(
+            serde_jcs::to_vec(&v).unwrap(),
+            b"{\"k\":\"\xf0\x9d\x84\x9e\"}"
+        );
+
+        // UTF-16 code-unit key sort order: "abc" < "z" < "ñ" (raw UTF-8 bytes).
+        let v = serde_json::json!({"ñ": 3, "z": 2, "abc": 1});
+        assert_eq!(
+            serde_jcs::to_vec(&v).unwrap(),
+            b"{\"abc\":1,\"z\":2,\"\xc3\xb1\":3}"
+        );
+
+        // ASCII-only content is byte-identical to the historical sort_keys form.
+        let v = serde_json::json!({"event":"register","file_id":"f0","n":3});
+        assert_eq!(
+            serde_jcs::to_vec(&v).unwrap(),
+            b"{\"event\":\"register\",\"file_id\":\"f0\",\"n\":3}"
+        );
+    }
 }

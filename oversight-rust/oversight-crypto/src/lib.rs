@@ -33,6 +33,13 @@ use ed25519_dalek::{
     VerifyingKey as EdVerifyingKey,
 };
 use hkdf::Hkdf;
+use ml_kem::{
+    ml_kem_768::{
+        Ciphertext as MlKem768Ciphertext, DecapsulationKey as MlKem768DecapsulationKey,
+        EncapsulationKey as MlKem768EncapsulationKey,
+    },
+    Decapsulate, KeyExport,
+};
 use p256::{
     ecdh::diffie_hellman as p256_diffie_hellman, elliptic_curve::sec1::ToEncodedPoint,
     PublicKey as P256PublicKey, SecretKey as P256SecretKey,
@@ -51,6 +58,12 @@ pub const ED25519_SIG_LEN: usize = 64;
 pub const DEK_LEN: usize = 32;
 /// P-256 public key in SEC1 uncompressed encoding (`0x04 || X || Y`).
 pub const P256_PUBLIC_KEY_LEN: usize = 65;
+
+/// ML-KEM-768 (FIPS 203) byte sizes for the OSGT-HYBRID-v1 KEM half.
+pub const MLKEM768_PUB_LEN: usize = 1184;
+pub const MLKEM768_CT_LEN: usize = 1088;
+pub const MLKEM768_SEED_LEN: usize = 64;
+pub const MLKEM768_SHARED_SECRET_LEN: usize = 32;
 
 pub const SUITE_CLASSIC_V1: &str = "OSGT-CLASSIC-v1";
 pub const SUITE_HYBRID_V1: &str = "OSGT-HYBRID-v1";
@@ -73,6 +86,8 @@ pub enum CryptoError {
     Hkdf,
     #[error("missing wrapped-DEK field: {0}")]
     MissingField(&'static str),
+    #[error("ML-KEM error: {0}")]
+    Kem(String),
 }
 
 // -------------------------- Identity --------------------------
@@ -307,6 +322,187 @@ pub fn unwrap_dek(
         &wrapped.wrapped_dek,
         b"oversight-dek",
     )?;
+    Ok(Zeroizing::new(plaintext))
+}
+
+// ----------------------- Hybrid (OSGT-HYBRID-v1) -----------------------
+
+/// Wire shape for a hybrid-wrapped DEK. Byte-for-byte JSON compatible with
+/// the Python reference (`oversight_core.crypto.hybrid_wrap_dek`): every value
+/// is hex-encoded, keys are exactly `{suite, x25519_ephemeral_pub,
+/// mlkem_ciphertext, nonce, wrapped_dek}`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HybridEnvelope {
+    pub suite: String,
+    pub x25519_ephemeral_pub: String,
+    pub mlkem_ciphertext: String,
+    pub nonce: String,
+    pub wrapped_dek: String,
+}
+
+/// Generate an ML-KEM-768 recipient keypair. Returns the 1184-byte NIST
+/// encapsulation (public) key and the 64-byte seed from which the
+/// decapsulation (private) key is derived. The seed form is the RustCrypto
+/// ml-kem crate's recommended encoding; the private key never needs to cross
+/// the language boundary, only the public key does.
+pub fn mlkem768_generate_keypair() -> (Vec<u8>, [u8; MLKEM768_SEED_LEN]) {
+    let mut seed = [0u8; MLKEM768_SEED_LEN];
+    OsRng.fill_bytes(&mut seed);
+    let dk = MlKem768DecapsulationKey::from_seed(seed.into());
+    let pub_bytes = dk.encapsulation_key().to_bytes().to_vec();
+    (pub_bytes, seed)
+}
+
+/// Hybrid DEK wrap: combines an X25519 ECDH shared secret and an ML-KEM-768
+/// KEM shared secret via HKDF. An attacker must break BOTH X25519 and
+/// ML-KEM-768 to recover the KEK. The HKDF IKM binds the KEK to the full
+/// encapsulation (both shared secrets, the X25519 ephemeral pub, and the
+/// ML-KEM ciphertext), mirroring `oversight_core.crypto.hybrid_wrap_dek` so
+/// Rust and Python produce byte-identical envelopes.
+pub fn hybrid_wrap_dek(
+    dek: &[u8],
+    recipient_x25519_pub: &[u8],
+    recipient_mlkem_pub: &[u8],
+) -> Result<HybridEnvelope, CryptoError> {
+    if recipient_x25519_pub.len() != X25519_KEY_LEN {
+        return Err(CryptoError::InvalidKeyLength {
+            expected: X25519_KEY_LEN,
+            got: recipient_x25519_pub.len(),
+        });
+    }
+    if recipient_mlkem_pub.len() != MLKEM768_PUB_LEN {
+        return Err(CryptoError::InvalidKeyLength {
+            expected: MLKEM768_PUB_LEN,
+            got: recipient_mlkem_pub.len(),
+        });
+    }
+
+    let mut eph_bytes = Zeroizing::new([0u8; X25519_KEY_LEN]);
+    OsRng.fill_bytes(eph_bytes.as_mut());
+    let eph = X25519StaticSecret::from(*eph_bytes);
+    let eph_pub = X25519PublicKey::from(&eph);
+    let eph_pub_bytes = eph_pub.to_bytes();
+
+    let mut peer_arr = [0u8; X25519_KEY_LEN];
+    peer_arr.copy_from_slice(recipient_x25519_pub);
+    let peer = X25519PublicKey::from(peer_arr);
+    let ss_x = Zeroizing::new(eph.diffie_hellman(&peer).to_bytes());
+
+    let ek_fixed: [u8; MLKEM768_PUB_LEN] = recipient_mlkem_pub
+        .try_into()
+        .map_err(|_| CryptoError::InvalidKeyLength {
+            expected: MLKEM768_PUB_LEN,
+            got: recipient_mlkem_pub.len(),
+        })?;
+    let ek = MlKem768EncapsulationKey::new(&ek_fixed.into())
+        .map_err(|_| CryptoError::Kem("invalid ML-KEM-768 encapsulation key".into()))?;
+    // FIPS 203 encapsulation randomness is a single 32-byte message `m`; we
+    // sample it with the workspace OsRng and call the deterministic path,
+    // which is output- and security-identical to encapsulate_with_rng.
+    let mut m = [0u8; MLKEM768_SHARED_SECRET_LEN];
+    OsRng.fill_bytes(&mut m);
+    let (mlkem_ct, ss_pq) = ek.encapsulate_deterministic(&m.into());
+
+    let mut ikm = Vec::with_capacity(
+        X25519_KEY_LEN + MLKEM768_SHARED_SECRET_LEN + X25519_KEY_LEN + MLKEM768_CT_LEN,
+    );
+    ikm.extend_from_slice(ss_x.as_ref());
+    ikm.extend_from_slice(ss_pq.as_slice());
+    ikm.extend_from_slice(&eph_pub_bytes);
+    ikm.extend_from_slice(mlkem_ct.as_slice());
+
+    let hk = Hkdf::<Sha256>::new(None, &ikm);
+    let mut kek = Zeroizing::new([0u8; 32]);
+    hk.expand(b"oversight-hybrid-v1-dek-wrap", kek.as_mut())
+        .map_err(|_| CryptoError::Hkdf)?;
+
+    let (nonce, wrapped) = aead_encrypt(kek.as_ref(), dek, b"oversight-hybrid-dek")?;
+
+    Ok(HybridEnvelope {
+        suite: SUITE_HYBRID_V1.to_string(),
+        x25519_ephemeral_pub: hex::encode(eph_pub_bytes),
+        mlkem_ciphertext: hex::encode(mlkem_ct.as_slice()),
+        nonce: hex::encode(nonce),
+        wrapped_dek: hex::encode(&wrapped),
+    })
+}
+
+/// Recover a DEK from a hybrid-wrapped envelope. The recipient supplies its
+/// 32-byte X25519 private key and its 64-byte ML-KEM-768 seed; both shared
+/// secrets are recomputed and the KEK is derived with the same HKDF binding
+/// as `hybrid_wrap_dek`. Mirrors `oversight_core.crypto.hybrid_unwrap_dek`.
+pub fn hybrid_unwrap_dek(
+    envelope: &HybridEnvelope,
+    recipient_x25519_priv: &[u8],
+    recipient_mlkem_seed: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
+    if recipient_x25519_priv.len() != X25519_KEY_LEN {
+        return Err(CryptoError::InvalidKeyLength {
+            expected: X25519_KEY_LEN,
+            got: recipient_x25519_priv.len(),
+        });
+    }
+    if recipient_mlkem_seed.len() != MLKEM768_SEED_LEN {
+        return Err(CryptoError::InvalidKeyLength {
+            expected: MLKEM768_SEED_LEN,
+            got: recipient_mlkem_seed.len(),
+        });
+    }
+
+    let eph_pub_bytes = hex::decode(&envelope.x25519_ephemeral_pub).map_err(CryptoError::Hex)?;
+    let mlkem_ct_bytes = hex::decode(&envelope.mlkem_ciphertext).map_err(CryptoError::Hex)?;
+    if eph_pub_bytes.len() != X25519_KEY_LEN {
+        return Err(CryptoError::InvalidKeyLength {
+            expected: X25519_KEY_LEN,
+            got: eph_pub_bytes.len(),
+        });
+    }
+    if mlkem_ct_bytes.len() != MLKEM768_CT_LEN {
+        return Err(CryptoError::InvalidKeyLength {
+            expected: MLKEM768_CT_LEN,
+            got: mlkem_ct_bytes.len(),
+        });
+    }
+
+    let mut priv_arr = Zeroizing::new([0u8; X25519_KEY_LEN]);
+    priv_arr.as_mut().copy_from_slice(recipient_x25519_priv);
+    let sk = X25519StaticSecret::from(*priv_arr);
+    let mut eph_pub_arr = [0u8; X25519_KEY_LEN];
+    eph_pub_arr.copy_from_slice(&eph_pub_bytes);
+    let eph_pub = X25519PublicKey::from(eph_pub_arr);
+    let ss_x = Zeroizing::new(sk.diffie_hellman(&eph_pub).to_bytes());
+
+    let mut seed_arr = [0u8; MLKEM768_SEED_LEN];
+    seed_arr.copy_from_slice(recipient_mlkem_seed);
+    let dk = MlKem768DecapsulationKey::from_seed(seed_arr.into());
+    let ct_fixed: [u8; MLKEM768_CT_LEN] = mlkem_ct_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| CryptoError::InvalidKeyLength {
+            expected: MLKEM768_CT_LEN,
+            got: mlkem_ct_bytes.len(),
+        })?;
+    let ct: MlKem768Ciphertext = ct_fixed.into();
+    let ss_pq = dk.decapsulate(&ct);
+    let mut ss_pq_bytes = Zeroizing::new([0u8; MLKEM768_SHARED_SECRET_LEN]);
+    ss_pq_bytes.copy_from_slice(ss_pq.as_slice());
+
+    let mut ikm = Vec::with_capacity(
+        X25519_KEY_LEN + MLKEM768_SHARED_SECRET_LEN + X25519_KEY_LEN + MLKEM768_CT_LEN,
+    );
+    ikm.extend_from_slice(ss_x.as_ref());
+    ikm.extend_from_slice(ss_pq_bytes.as_ref());
+    ikm.extend_from_slice(&eph_pub_bytes);
+    ikm.extend_from_slice(&mlkem_ct_bytes);
+
+    let hk = Hkdf::<Sha256>::new(None, &ikm);
+    let mut kek = Zeroizing::new([0u8; 32]);
+    hk.expand(b"oversight-hybrid-v1-dek-wrap", kek.as_mut())
+        .map_err(|_| CryptoError::Hkdf)?;
+
+    let nonce = hex::decode(&envelope.nonce).map_err(CryptoError::Hex)?;
+    let wrapped = hex::decode(&envelope.wrapped_dek).map_err(CryptoError::Hex)?;
+    let plaintext = aead_decrypt(kek.as_ref(), &nonce, &wrapped, b"oversight-hybrid-dek")?;
     Ok(Zeroizing::new(plaintext))
 }
 
@@ -998,5 +1194,91 @@ mod tests {
         let wrapped = wrap_dek_for_recipient(dek.as_ref(), &alice_pub).unwrap();
         let recovered = unwrap_dek_with_provider(&wrapped, &provider).unwrap();
         assert_eq!(&recovered[..], dek.as_ref());
+    }
+
+    // ----------------------- Hybrid (OSGT-HYBRID-v1) -----------------------
+
+    fn hybrid_recipient() -> (ClassicIdentity, Vec<u8>, [u8; MLKEM768_SEED_LEN]) {
+        let id = ClassicIdentity::generate();
+        let (mlkem_pub, mlkem_seed) = mlkem768_generate_keypair();
+        (id, mlkem_pub, mlkem_seed)
+    }
+
+    #[test]
+    fn hybrid_dek_round_trips() {
+        let (alice, mlkem_pub, mlkem_seed) = hybrid_recipient();
+        let dek = random_dek();
+        let env = hybrid_wrap_dek(dek.as_ref(), &alice.x25519_pub, &mlkem_pub).unwrap();
+        let recovered = hybrid_unwrap_dek(&env, &alice.x25519_priv[..], &mlkem_seed).unwrap();
+        assert_eq!(&recovered[..], dek.as_ref());
+    }
+
+    #[test]
+    fn hybrid_envelope_json_shape() {
+        let (alice, mlkem_pub, _) = hybrid_recipient();
+        let dek = random_dek();
+        let env = hybrid_wrap_dek(dek.as_ref(), &alice.x25519_pub, &mlkem_pub).unwrap();
+        let json: serde_json::Value = serde_json::to_value(&env).unwrap();
+        assert_eq!(json["suite"].as_str(), Some(SUITE_HYBRID_V1));
+        for k in ["x25519_ephemeral_pub", "mlkem_ciphertext", "nonce", "wrapped_dek"] {
+            assert!(json[k].is_string(), "envelope missing hex field {k}");
+            assert!(hex::decode(json[k].as_str().unwrap()).is_ok(), "{k} not hex");
+        }
+        let ct = hex::decode(json["mlkem_ciphertext"].as_str().unwrap()).unwrap();
+        assert_eq!(ct.len(), MLKEM768_CT_LEN);
+        let parsed: HybridEnvelope = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.suite, env.suite);
+        assert_eq!(parsed.mlkem_ciphertext, env.mlkem_ciphertext);
+    }
+
+    #[test]
+    fn hybrid_tamper_classical_half_rejected() {
+        let (alice, mlkem_pub, mlkem_seed) = hybrid_recipient();
+        let dek = random_dek();
+        let mut env = hybrid_wrap_dek(dek.as_ref(), &alice.x25519_pub, &mlkem_pub).unwrap();
+        let other = ClassicIdentity::generate();
+        env.x25519_ephemeral_pub = hex::encode(other.x25519_pub);
+        let res = hybrid_unwrap_dek(&env, &alice.x25519_priv[..], &mlkem_seed);
+        assert!(res.is_err(), "tampered classical half must fail unwrap");
+    }
+
+    #[test]
+    fn hybrid_tamper_pq_half_rejected() {
+        let (alice, mlkem_pub, mlkem_seed) = hybrid_recipient();
+        let dek = random_dek();
+        let mut env = hybrid_wrap_dek(dek.as_ref(), &alice.x25519_pub, &mlkem_pub).unwrap();
+        let mut ct = hex::decode(&env.mlkem_ciphertext).unwrap();
+        ct[100] ^= 0x01;
+        env.mlkem_ciphertext = hex::encode(&ct);
+        let res = hybrid_unwrap_dek(&env, &alice.x25519_priv[..], &mlkem_seed);
+        assert!(res.is_err(), "tampered PQ half must fail unwrap");
+    }
+
+    #[test]
+    fn hybrid_wrong_recipient_rejected() {
+        let (alice, mlkem_pub, _) = hybrid_recipient();
+        let dek = random_dek();
+        let env = hybrid_wrap_dek(dek.as_ref(), &alice.x25519_pub, &mlkem_pub).unwrap();
+        let (bob, _bob_pub, bob_seed) = hybrid_recipient();
+        let res = hybrid_unwrap_dek(&env, &bob.x25519_priv[..], &bob_seed);
+        assert!(res.is_err(), "wrong recipient must not unwrap");
+    }
+
+    #[test]
+    fn hybrid_overhead_is_bounded() {
+        let (alice, mlkem_pub, _) = hybrid_recipient();
+        let dek = random_dek();
+        let env = hybrid_wrap_dek(dek.as_ref(), &alice.x25519_pub, &mlkem_pub).unwrap();
+        let json = serde_json::to_string(&env).unwrap();
+        assert!(
+            json.len() < 4096,
+            "hybrid envelope JSON unexpectedly large: {}",
+            json.len()
+        );
+        assert!(
+            json.len() as usize > 2 * MLKEM768_CT_LEN,
+            "hybrid envelope suspiciously small: {}",
+            json.len()
+        );
     }
 }

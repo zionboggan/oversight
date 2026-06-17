@@ -1,5 +1,10 @@
 # v0.5 — Sigstore Rekor v2 Migration Plan
 
+> **STATUS: Shipped.** v0.5 (Sigstore Rekor v2 integration) is live in
+> `oversight_core/rekor.py` and the `oversight-rekor` Rust crate, with
+> cross-language conformance enforced by `oversight-rust/tests/conformance_rekor.sh`.
+> This document is the original migration plan, kept for design context.
+
 Drafted 2026-04-19. Approved scope: public Rekor v2 only (no self-host).
 USENIX Cycle 2 strategy: v0.4.1 frozen as paper artifact safety net;
 v0.5 lands as a stretch goal if evaluation work comes together first.

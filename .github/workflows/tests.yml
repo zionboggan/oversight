@@ -1,0 +1,105 @@
+name: tests
+
+# Enforces the project's "conformance is ground truth" rule on every change.
+# Three jobs:
+#   python       -> main()-style scripts + pytest-collectable + (optional) PQ
+#   rust         -> cargo test --workspace --release
+#   conformance  -> cross-language bit-identity (needs both sides green first)
+#
+# The main()-style test files predate pytest collection in this repo and run
+# via __main__; pytest only collects test_hw_p256 and test_source_comment_style
+# today. Converting the rest to pytest test_* is tracked separately; until then
+# both runners are invoked here so coverage is actually enforced.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest
+      - name: Install tkinter (cli.gui imports it at module top)
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+      - name: Try install liboqs (optional, for PQ suite)
+        run: pip install liboqs-python || echo "::notice::liboqs-python unavailable; test_pq will skip"
+      - name: Run main()-style test scripts
+        run: |
+          rc=0
+          for t in test_e2e test_e2e_v2 test_rekor_unit test_policy_unit test_tlog_unit \
+                   test_registry_unit test_registry_conformance test_rekor_backcompat \
+                   test_text_format_unit test_l3_policy_unit test_siem_unit \
+                   test_gui_hardening_unit; do
+            echo "::group::tests/$t.py"
+            if python "tests/$t.py"; then echo "[OK] $t"; else echo "::error::tests/$t.py failed"; rc=1; fi
+            echo "::endgroup::"
+          done
+          exit $rc
+      - name: Run PQ tests (skipped cleanly if liboqs absent)
+        run: |
+          if python -c "import oqs" 2>/dev/null; then
+            python tests/test_pq.py
+          else
+            echo "::notice::liboqs not installed; skipping test_pq (optional PQ suite)"
+          fi
+      - name: Run pytest-collectable tests
+        run: pytest tests/ -v
+
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: oversight-rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: oversight-rust
+      - name: cargo test --workspace --release
+        run: cargo test --workspace --release
+
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [python, rust]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: oversight-rust
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Cross-language conformance (CLASSIC seal/open)
+        working-directory: oversight-rust
+        run: bash tests/conformance_cross_lang.sh
+      - name: Cross-language conformance (Rekor DSSE/PAE)
+        working-directory: oversight-rust
+        run: bash tests/conformance_rekor.sh

@@ -121,7 +121,7 @@ class RegistryMonitor:
         if not sig_hex:
             log.warning(f"bundle for {file_id} has no signature")
             return None
-        msg = json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        msg = json.dumps(bundle, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         try:
             self.pinned_pub.verify(bytes.fromhex(sig_hex), msg)
         except InvalidSignature:

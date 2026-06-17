@@ -19,6 +19,7 @@ from dataclasses import dataclass, field, asdict, fields
 from typing import Optional
 
 from .crypto import sign_manifest, verify_manifest, SUITE_CLASSIC_V1
+from .jcs import jcs_dumps
 
 
 @dataclass
@@ -26,6 +27,11 @@ class Recipient:
     recipient_id: str                # stable identifier (email hash, user UUID, etc.)
     x25519_pub: str                  # hex
     ed25519_pub: Optional[str] = None  # hex, for verifying recipient acks
+    # Present on OSGT-HW-P256-v1 manifests (Rust-produced). Python keeps parse
+    # and inspect parity during the transition to the Rust canonical target but
+    # does not implement the HW-P256 seal/open crypto path. Defaults to None so
+    # classic-suite manifests canonicalize byte-identically to before.
+    p256_pub: Optional[str] = None
 
 
 @dataclass
@@ -143,16 +149,17 @@ class Manifest:
         Rules:
           - Exclude the two signature fields (replace with empty string sentinel).
           - Drop None-valued fields recursively.
-          - Sort keys lexicographically.
-          - UTF-8 encoded, no whitespace.
+          - RFC 8785 JCS: keys sorted by UTF-16 code unit, no whitespace,
+            non-ASCII output as raw UTF-8. Byte-exact match with the Rust
+            reference's ``serde_jcs::to_vec``.
         """
         d = self.to_dict(include_signatures=False)
         d = self._strip_none(d)
-        return json.dumps(d, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return jcs_dumps(d)
 
     def to_json(self) -> bytes:
         d = self._strip_none(self.to_dict())
-        return json.dumps(d, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return jcs_dumps(d)
 
     @classmethod
     def from_json(cls, data: bytes) -> "Manifest":

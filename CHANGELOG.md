@@ -1,6 +1,114 @@
 # Oversight CHANGELOG
 
-## Unreleased
+## v0.4.12 - 2026-06-17 Security hardening, cross-language parity, JCS canonicalization, and the post-quantum KEM mirror
+
+- **Minimum supported Rust version raised to 1.85.** The post-quantum KEM
+  mirror depends on RustCrypto's `ml-kem` crate, which requires Rust 1.85
+  (edition 2024). The workspace `rust-version` is bumped from 1.75 to 1.85
+  to declare this accurately; the workspace itself stays on edition 2021.
+  Consumers building from source need a 1.85+ toolchain.
+
+- **Post-quantum KEM mirror (OSGT-HYBRID-v1), Phase A.** The Rust crypto
+  crate now implements the ML-KEM-768 half of the hybrid DEK wrap,
+  byte-identical to the Python reference. New functions
+  `oversight_crypto::hybrid_wrap_dek`, `hybrid_unwrap_dek`, and
+  `mlkem768_generate_keypair` reproduce the Python construction exactly:
+  IKM is `ss_x || ss_pq || x25519_ephemeral_pub || mlkem_ciphertext`,
+  HKDF-SHA256 with a zero salt and `info=b"oversight-hybrid-v1-dek-wrap"`,
+  then XChaCha20-Poly1305 with `aad=b"oversight-hybrid-dek"`. The envelope
+  JSON shape (`suite`, `x25519_ephemeral_pub`, `mlkem_ciphertext`, `nonce`,
+  `wrapped_dek`, all hex) matches `oversight_core.crypto.hybrid_wrap_dek`,
+  so a Python-wrapped envelope opens in Rust and vice versa. The primitive
+  is RustCrypto's pure-Rust `ml-kem` crate (FIPS 203, no C build, chosen
+  over liboqs because the build environment lacks cmake and the pure-Rust
+  crate satisfies the same NIST-primitives-via-RustCrypto/liboqs rule). Rust keeps its
+  decapsulation keys in the recommended 64-byte seed form; only the
+  1184-byte public key ever crosses the language boundary, so no deprecated
+  expanded-key import is needed. Six Rust unit tests mirror
+  `tests/test_pq.py` (round trip, JSON shape, tamper-classical,
+  tamper-PQ, wrong recipient, overhead bound), and a new cross-language
+  conformance vector (`tests/conformance_hybrid_kem.py`) proves both
+  directions (PY wrap to RS unwrap, RS wrap to PY unwrap) against a live
+  liboqs, wired into `conformance_cross_lang.sh` as step 5. Scope: KEM
+  only. The container HYBRID seal/open dispatch and ML-DSA manifest
+  signing are deferred (Phase B and Phase C respectively); per the owner's
+  decision, Phase C will use dual Ed25519 AND ML-DSA-65 signatures.
+
+- **Suppress liboqs-python import-time stdout.** `liboqs-python` attaches a
+  `StreamHandler(sys.stdout)` at INFO and logs a line when imported, which
+  contaminated stdout for any caller importing `oversight_core.crypto` and
+  broke byte-identity conformance capture. `oversight_core/crypto.py` now
+  redirects stdout during the `import oqs` so the message is dropped.
+  Behavior of the PQ primitives is unchanged.
+
+- **Rust `open_sealed` now enforces the `jurisdiction` policy.** The
+  `oversight-policy::check_policy` function already implemented
+  jurisdiction matching (and had passing unit tests), but the container
+  open path never called it: `open_sealed` and `open_sealed_with_provider`
+  inlined only the `not_after` / `not_before` time checks and skipped
+  jurisdiction entirely, so the policy crate's enforcement was dead code
+  on the real open path. Python enforces at `container.py:226`
+  (`check_policy` before decryption); Rust now mirrors that single
+  chokepoint. Both Rust open functions now call
+  `oversight_policy::check_policy(&manifest, policy_ctx)` after issuer
+  trust and before DEK unwrap, which also retires the duplicated inline
+  time checks onto the tested canonical path. Observable change: time
+  violations now surface as `ContainerError::Policy` (typed, matching
+  Python's `PolicyViolation`) rather than `ContainerError::Precondition`.
+  Four new container-level tests pin the behavior (mismatch rejected,
+  match allowed, GLOBAL allowed, no-context skip), and the existing
+  `expired_file_rejected` assertion is updated to the typed error.
+  Backward compatibility: GLOBAL manifests (the default) and opens with
+  no `PolicyContext` (the raw-open path used by the cross-language
+  conformance harness) are unaffected. Scope honesty: this closes the
+  open-time gap the review flagged. It does NOT implement the
+  registry-time MUST in SPEC.md §8.4 (`policy.jurisdiction` mismatch
+  causing `/register` rejection), which is unimplemented in BOTH
+  languages and tracked separately. A `--jurisdiction` CLI flag for an
+  opener asserting a non-default region is a deferred follow-up, not
+  required for the gap closure (the CLI's default `GLOBAL` context
+  already rejects a manifest requiring a specific jurisdiction).
+
+- **Constant-time token comparison via `subtle::ConstantTimeEq`.** The
+  Oversight Rust registry's operator-token and DNS-secret comparison was
+  a hand-rolled loop in `oversight-registry/src/auth.rs` with an early
+  return on length mismatch, which trivially leaked whether an attacker's
+  guessed length was correct in O(1). Replaced with
+  `subtle::ConstantTimeEq` (audited RustCrypto crate, already a transitive
+  dependency via `ed25519-dalek` and `chacha20poly1305`, now declared
+  explicitly). Four new registry unit tests pin the correctness matrix
+  (equal inputs across lengths, same-length different content,
+  mismatched-length no-early-return, single-bit difference). The
+  hand-rolled early-return leak is closed; the residual
+  max(supplied, expected) timing observation from `subtle`'s slice impl
+  is documented in the function-level rationale and is acceptable for
+  Oversight's high-entropy operator tokens.
+
+- **Canonicalization unified on RFC 8785 JCS.** The Python reference now
+  canonicalizes via a vendored `oversight_core.jcs.jcs_dumps` that is
+  byte-exact with the Rust reference's `serde_jcs::to_vec`. Previously
+  Python used `json.dumps(sort_keys=True, separators=(",",":"))` with the
+  default `ensure_ascii=True`, which diverged from Rust for any non-ASCII
+  string value (Python escaped non-ASCII as `\uXXXX`; Rust emitted raw
+  UTF-8). The divergence was latent because every committed test fixture
+  and the conformance harness used ASCII-only content, but any production
+  manifest with a non-ASCII recipient_id, issuer_id, or filename would
+  have signed to different bytes across the two implementations and
+  failed cross-language verification. The port covers manifest signing,
+  manifest wire form, transparency-log leaf payloads, transparency-log
+  signed heads, sealed-container wrapped_dek, DSSE statement payloads,
+  DSSE envelope serialization, registry manifest verification, registry
+  sidecar comparison, and registry evidence-bundle signing. Standalone
+  tooling (sample generators, live demo, canary keeper) uses the
+  `sort_keys=True, ensure_ascii=False` form, which is byte-identical to
+  JCS for the no-floats subset these tools emit. `conformance_cross_lang.sh`
+  gains a non-ASCII `recipient_id` round trip that exercises the
+  divergence end-to-end and would fail under any non-JCS serialization.
+  Backward compatibility: for ASCII-only content (every committed fixture
+  and every existing test vector), the new JCS bytes are identical to the
+  old sort_keys bytes, so existing signatures continue to verify.
+
+### Earlier batches in v0.4.12 (pre-JCS, kept for review provenance)
 
 - **Live registry deployment config.** `docker-compose.yml` now has a `live`
   Caddy profile with public TLS routing for the registry, beacon, OCSP-style,

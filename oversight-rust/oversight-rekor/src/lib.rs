@@ -157,8 +157,9 @@ pub struct DsseSignature {
 }
 
 impl DsseEnvelope {
-    /// Canonical JSON encoding: sorted keys, no whitespace. Bit-identical to
-    /// Python `json.dumps(..., sort_keys=True, separators=(",",":"))`.
+    /// Canonical JSON encoding per RFC 8785 (JCS). Byte-identical to the
+    /// Python reference's ``oversight_core.jcs.jcs_dumps``. Keys sorted by
+    /// UTF-16 code unit, no whitespace, non-ASCII output as raw UTF-8.
     pub fn to_canonical_json(&self) -> Result<String, RekorError> {
         // Build via BTreeMap so keys sort and we control order.
         let v = serde_json::json!({
@@ -170,9 +171,6 @@ impl DsseEnvelope {
                 .map(|s| serde_json::json!({"sig": s.sig, "keyid": s.keyid}))
                 .collect::<Vec<_>>(),
         });
-        // Use serde_jcs so multi-byte / unicode handling matches Python's
-        // sort_keys behavior. JCS sorts lexicographically by UTF-16 code units;
-        // for our ASCII-only field set this matches Python sort_keys exactly.
         Ok(serde_jcs::to_string(&v)?)
     }
 

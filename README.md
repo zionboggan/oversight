@@ -8,7 +8,7 @@ Format-agnostic. Post-quantum ready (ML-KEM-768 + ML-DSA-65). Layered watermarki
 
 No cloud vendor lock-in. No paid service required. No custom cryptography. Apache 2.0.
 
-**Website:** [https://oversight-protocol.github.io/oversight/](https://oversightprotocol.dev/)
+**Website:** [https://oversightprotocol.dev/](https://oversightprotocol.dev/)
 **Mobile companion (verifier):** [oversight-protocol/oversight-mobile](https://github.com/oversight-protocol/oversight-mobile) — Flutter UI on top of the same Rust crates that power this CLI, currently in internal TestFlight beta.
 **Outlook add-in pilot:** [oversightprotocol.dev/integrations/outlook/](https://oversightprotocol.dev/integrations/outlook/), read-mode task pane that verifies and decrypts sealed attachments with the same browser inspector modules.
 
@@ -364,17 +364,18 @@ These items are included in v0.4.4/v0.4.5 and current `main`:
 ## Repository layout
 
 ```
-oversight/                              Python reference (6,800 LOC)
+oversight/                              Python reference (5,689 LOC)
 ├── oversight_core/
 │   ├── crypto.py                      X25519 + Ed25519 + XChaCha20 + HKDF + PQ hybrid
 │   ├── container.py                   .sealed binary format
 │   ├── manifest.py                    signed canonical-JSON manifest
 │   ├── watermark.py                   L1 zero-width, L2 whitespace
 │   ├── semantic.py                    L3 synonyms + punctuation
-│   ├── synonyms_v2.py                 150-class expanded dictionary
+│   ├── synonyms_v2.py                 151-class expanded dictionary
 │   ├── policy.py                      not_after / max_opens / jurisdiction
 │   ├── beacon.py                      DNS / HTTP / OCSP / license beacons
 │   ├── tlog.py                        Merkle transparency log
+│   ├── rekor.py                       Sigstore Rekor v2 (DSSE + PAE)
 │   ├── timestamp.py                   RFC 3161 (FreeTSA + DigiCert)
 │   ├── decoy.py                       Ollama-powered decoy files
 │   └── formats/{text,image,pdf,docx}.py
@@ -384,17 +385,24 @@ oversight/                              Python reference (6,800 LOC)
 │   ├── flywheel_oversight_match.py    Flywheel scraper hook
 │   └── perseus_canarykeeper.py        Perseus Discord alert agent
 ├── cli/oversight.py
-├── tests/{test_e2e.py,test_e2e_v2.py,test_pq.py}
-└── docs/{SPEC.md,ROADMAP.md,RUNBOOK.md}
+├── tests/{test_e2e.py,test_e2e_v2.py,test_pq.py,...}
+└── docs/{SPEC.md,ROADMAP.md,EMBEDDING.md,security.md}
 
-oversight-rust/                         Rust port (~1,500 LOC, core complete)
+oversight-rust/                         Rust port (2,934 LOC)
 ├── Cargo.toml                          workspace
 ├── oversight-crypto/                   X25519, Ed25519, XChaCha20, HKDF, zeroize
 ├── oversight-manifest/                 JCS canonical JSON, Ed25519 sign/verify
 ├── oversight-container/                .sealed format parser, hard caps
 ├── oversight-watermark/                L1 + L2
+├── oversight-tlog/                     RFC 6962 Merkle log, signed heads
+├── oversight-policy/                   fs2 flock + atomic rename, TOCTOU-safe
+├── oversight-semantic/                 151-class dict + L3 airgap-survivor
+├── oversight-formats/                  text, image (DCT), pdf, docx adapters
+├── oversight-rekor/                    Sigstore Rekor v2 (DSSE + PAE)
+├── oversight-registry/                 Axum + SQLite registry (parity with FastAPI)
 ├── oversight-cli/                      keygen / seal / open / inspect
-└── tests/conformance_cross_lang.sh     bit-for-bit Python<->Rust conformance
+├── fuzz/                               cargo-fuzz harnesses (container, manifest)
+└── tests/conformance_*.sh              bit-for-bit Python<->Rust conformance
 ```
 
 ## Quickstart
@@ -412,7 +420,7 @@ python tests/test_pq.py          # 7 checks (needs liboqs)
 
 ```bash
 cd oversight-rust
-cargo test --workspace           # 21 checks
+cargo test --workspace           # 142 checks
 cargo run -- keygen --out alice.json
 cargo run -- seal --input doc.txt --output doc.sealed \
     --issuer issuer.json --recipient-pub <hex> --recipient-id alice@test
@@ -445,24 +453,24 @@ current stable line.
 
 | Layer | Checks | Status |
 |---|---|---|
-| Python pytest suite | 11 | green |
+| Python pytest suite | 15 | green |
 | Rust oversight-container | 17 | green |
 | Rust oversight-crypto | 21 | green |
 | Rust oversight-formats | 40 | green |
 | Rust oversight-manifest | 3 | green |
 | Rust oversight-policy | 7 | green |
-| Rust oversight-registry | 12 | green |
+| Rust oversight-registry | 17 | green |
 | Rust oversight-rekor | 10 | green |
 | Rust oversight-semantic | 8 | green |
 | Rust oversight-tlog | 14 | green |
 | Rust oversight-watermark | 4 | green |
-| Cross-language conformance | 3 | green |
-| Total automated Rust unit tests | 136 | all green |
+| Cross-language conformance | 2 scripts | green |
+| Total automated Rust unit tests | 142 | all green |
 
 ## Design principles (what Oversight never does)
 
 - **No custom cryptography.** Every primitive is NIST-standardized or equivalent. `x25519-dalek`, `ed25519-dalek`, `chacha20poly1305`, `hkdf`, `sha2`, ML-KEM-768, ML-DSA-65 via liboqs. That's the whole list.
-- **No cloud vendor lock-in.** Dropped the original AWS Nitro Enclaves plan. Hardware-key protection uses any FIDO2 device (YubiKey, OnlyKey, Nitrokey). Transparency log can run on public Sigstore Rekor or self-hosted; your choice.
+- **No cloud vendor lock-in.** Dropped the original AWS Nitro Enclaves plan. Hardware-key protection uses any PIV / PKCS#11 hardware key (YubiKey, Nitrokey, OnlyKey); see `docs/HARDWARE_KEYS.md`. Transparency log can run on public Sigstore Rekor or self-hosted; your choice.
 - **No RATs, no defensive malware.** Every "phone home" mechanism is a passive beacon — the kind of network call a normal document reader makes during rendering (image fetch, OCSP lookup, DNS resolution). We never execute code on a reader's machine.
 - **No tracking of personal identifiers.** Mark IDs are random 128-bit tokens. The registry maps them to recipient IDs that the issuer chose — the issuer decides how much identity binding to apply.
 - **No paid service required.** Year-1 all-in cost estimate: ~$6,200 (YubiKeys + domain + one conference). See `docs/ROADMAP.md`.

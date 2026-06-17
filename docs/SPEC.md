@@ -222,7 +222,7 @@ shared secret.
 
 ### 5.2 Manifest
 
-The manifest is canonical JSON (sorted keys, no whitespace, UTF-8). Required fields:
+The manifest is canonical JSON per RFC 8785 (JCS: keys sorted by UTF-16 code unit, no whitespace, non-ASCII emitted as raw UTF-8). Required fields:
 
 - `file_id` (UUID v4)
 - `issued_at` (unix seconds, UTC)
@@ -403,4 +403,7 @@ Reserved URN namespace: `urn:oversight:file:<file_id>`
 
 ## 13. Appendix A — Test vectors (normative)
 
-To follow in v0.2. Implementations SHOULD include a conformance test suite producing and verifying known sealed blobs.
+Cross-language conformance scripts live at `oversight-rust/tests/conformance_*.sh`
+and assert byte-identical seal/open and Rekor DSSE/PAE between the Python
+reference and the Rust port. Implementations SHOULD run them on every change
+and SHOULD add published byte-exact vectors for every suite they ship.

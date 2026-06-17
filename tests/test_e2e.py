@@ -178,5 +178,12 @@ def main():
     banner("ALL TESTS PASSED")
 
 
+def test_e2e_seal_open_watermark_round_trip():
+    """Pytest entry point. The scenario is one end-to-end flow with internal
+    assertions; pytest's value here is collection + CI integration, not
+    per-step granularity."""
+    main()
+
+
 if __name__ == "__main__":
     main()

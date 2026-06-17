@@ -1,6 +1,6 @@
 # Oversight Roadmap
 
-Last revised 2026-04-22. The launch plan is gated on product usability and
+Last revised 2026-06-16. The launch plan is gated on product usability and
 threat-model honesty, not on a calendar date.
 
 ## Where we are
@@ -21,7 +21,7 @@ threat-model honesty, not on a calendar date.
    or against a live URL. An operator claims v1 compatibility with
    `OVERSIGHT_REGISTRY_URL=https://registry.example.org python3 tests/test_registry_conformance.py`.
 4. **Browser inspector and classic-suite decrypt** shipped on
-   `oversight-protocol.github.io/oversight/viewer/`. Drag-drop `.sealed`
+   `oversightprotocol.dev/viewer/`. Drag-drop `.sealed`
    parsing, WebCrypto Ed25519 signature verification, canonical JSON
    byte-identical to Python, optional registry lookups, and full
    decryption of classic-suite sealed files using WebCrypto X25519 + HKDF-SHA256

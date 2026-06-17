@@ -9,9 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-import shutil
 import sys
-import uuid
 from types import SimpleNamespace
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -33,7 +31,14 @@ def _new_identity() -> dict:
     }
 
 
-def t1_rekor_attestation_uses_real_mark_id_and_digest():
+def _fake_request(host: str, headers: dict[str, str] | None = None):
+    return SimpleNamespace(
+        client=SimpleNamespace(host=host),
+        headers=headers or {},
+    )
+
+
+def test_rekor_attestation_uses_real_mark_id_and_digest():
     original_identity = registry_server.IDENTITY
     original_enabled = registry_server.REKOR_ENABLED
     original_upload = registry_server.rekor_mod.upload_dsse
@@ -85,10 +90,9 @@ def t1_rekor_attestation_uses_real_mark_id_and_digest():
         "L2_whitespace": "20" * 16,
     }
     assert result["log_index"] == 7
-    print("  [PASS] registry attests using a real mark_id and content_hash")
 
 
-def t2_register_rejects_unsigned_sidecar_mismatch():
+def test_register_rejects_unsigned_sidecar_mismatch():
     manifest = {
         "beacons": [
             {"token_id": "tok-1", "kind": "http_img", "url": "https://b.example/p/tok-1.png"},
@@ -124,17 +128,9 @@ def t2_register_rejects_unsigned_sidecar_mismatch():
         assert "watermarks do not match" in exc.detail
     else:
         raise AssertionError("unsigned request watermarks should be rejected")
-    print("  [PASS] register rejects unsigned beacon/watermark sidecars")
 
 
-def _fake_request(host: str, headers: dict[str, str] | None = None):
-    return SimpleNamespace(
-        client=SimpleNamespace(host=host),
-        headers=headers or {},
-    )
-
-
-def t3_dns_event_requires_secret_for_non_loopback():
+def test_dns_event_requires_secret_for_non_loopback():
     original_secret = registry_server.DNS_EVENT_SECRET
     try:
         registry_server.DNS_EVENT_SECRET = ""
@@ -161,15 +157,12 @@ def t3_dns_event_requires_secret_for_non_loopback():
             raise AssertionError("wrong DNS callback secret should be rejected")
     finally:
         registry_server.DNS_EVENT_SECRET = original_secret
-    print("  [PASS] dns_event rejects unauthenticated non-loopback callbacks")
 
 
-def t4_evidence_bundle_can_attach_tlog_proofs():
+def test_evidence_bundle_can_attach_tlog_proofs(tmp_path):
     original_tlog = registry_server.TLOG
-    td = os.path.join(ROOT, ".tmp-tests", f"registry-tlog-{uuid.uuid4().hex}")
-    os.makedirs(td, exist_ok=False)
     try:
-        registry_server.TLOG = TransparencyLog(td)
+        registry_server.TLOG = TransparencyLog(tmp_path)
         first = registry_server.TLOG.append({"event": "register", "file_id": "f"})
         second = registry_server.TLOG.append({"event": "beacon", "file_id": "f"})
         proofs = registry_server._tlog_proofs_for_events([
@@ -179,15 +172,13 @@ def t4_evidence_bundle_can_attach_tlog_proofs():
         ])
     finally:
         registry_server.TLOG = original_tlog
-        shutil.rmtree(td, ignore_errors=True)
 
     assert [p["event_row"] for p in proofs] == [0, 1]
     assert [p["tlog_index"] for p in proofs] == [first, second]
     assert all(p["proof"]["root"] for p in proofs)
-    print("  [PASS] evidence bundles attach tlog inclusion proofs for events")
 
 
-def t5_operator_token_gates_write_side_apis_when_configured():
+def test_operator_token_gates_write_side_apis_when_configured():
     original_token = registry_server.OPERATOR_TOKEN
     try:
         registry_server.OPERATOR_TOKEN = ""
@@ -210,22 +201,18 @@ def t5_operator_token_gates_write_side_apis_when_configured():
             raise AssertionError("wrong operator token should be rejected")
     finally:
         registry_server.OPERATOR_TOKEN = original_token
-    print("  [PASS] optional operator token gates write-side APIs")
 
 
-def t6_tlog_range_fails_closed_on_corrupt_leaf():
+def test_tlog_range_fails_closed_on_corrupt_leaf(tmp_path):
     original_tlog = registry_server.TLOG
-    td = os.path.join(ROOT, ".tmp-tests", f"registry-range-{uuid.uuid4().hex}")
-    os.makedirs(td, exist_ok=False)
     try:
-        registry_server.TLOG = TransparencyLog(td)
+        registry_server.TLOG = TransparencyLog(tmp_path)
         registry_server.TLOG.append({"event": "register", "file_id": "f"})
         out = registry_server.tlog_range(start=0, limit=1)
         assert out["count"] == 1
         assert out["entries"][0]["index"] == 0
 
-        with open(os.path.join(td, "leaves.jsonl"), "w", encoding="utf-8") as f:
-            f.write("{not-json}\n")
+        (tmp_path / "leaves.jsonl").write_text("{not-json}\n", encoding="utf-8")
         try:
             registry_server.tlog_range(start=0, limit=1)
         except HTTPException as exc:
@@ -235,23 +222,3 @@ def t6_tlog_range_fails_closed_on_corrupt_leaf():
             raise AssertionError("corrupt tlog range should fail closed")
     finally:
         registry_server.TLOG = original_tlog
-        shutil.rmtree(td, ignore_errors=True)
-    print("  [PASS] tlog range rejects corrupt leaf records")
-
-
-def main():
-    print("=" * 60)
-    print("  registry.server - focused unit tests")
-    print("=" * 60)
-    t1_rekor_attestation_uses_real_mark_id_and_digest()
-    t2_register_rejects_unsigned_sidecar_mismatch()
-    t3_dns_event_requires_secret_for_non_loopback()
-    t4_evidence_bundle_can_attach_tlog_proofs()
-    t5_operator_token_gates_write_side_apis_when_configured()
-    t6_tlog_range_fails_closed_on_corrupt_leaf()
-    print()
-    print("  ALL TESTS PASSED - 6/6")
-
-
-if __name__ == "__main__":
-    main()
